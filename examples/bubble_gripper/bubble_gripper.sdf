@@ -1,0 +1,159 @@
+<?xml version='1.0'?>
+<sdf version='1.6'>
+  <!-- Note: This is the accompaning SDF file for the example demo in
+       bubble_gripper.cc and therefore these two files must be kept in sync.
+
+       This file is based on simple_gripper.sdf in examples/simple_gripper.
+
+         This file defines the model for a bubble gripper having two bubbles.
+       The right bubble is fixed to the body of the gripper. The left bubble
+       is attached to the main body by a prismatic joint that allows it to
+       perform a grip.
+         The frame of the gripper, G, has its x-axis pointing to the right
+       of the gripper, its y-axis pointing "forward", and the z-axis pointing
+       upwards. This file only defines visual geometry but not contact
+       geometry, allowing the demo in bubble_gripper.cc to add contact
+       geometry programmatically.
+  -->
+  <model name='bubble_gripper'>
+    <!-- Pose X_WG of the gripper model frame G in the world frame W. -->
+    <pose>0.0555 0 0.0 0 0 0.</pose> <!-- set the last to 1.57 to match simple gripper -->
+
+    <joint name='weld_base' type='fixed'>
+      <parent>world</parent>
+      <child>y_translate_link</child>
+      <pose>0 0 0 0 0 0</pose>
+    </joint>
+
+    <link name='y_translate_link'>
+      <pose frame=''>0 0 0 0 -0 0</pose>
+      <inertial>
+        <mass>0.000001</mass>
+        <inertia>
+          <ixx>0.000001</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>0.000001</iyy>
+          <iyz>0</iyz>
+          <izz>0.000001</izz>
+        </inertia>
+        <pose frame=''>0 0 0 0 -0 0</pose>
+      </inertial>
+    </link>
+
+    <joint name='z_translate_joint' type='prismatic'>
+      <parent>y_translate_link</parent>
+      <child>body</child>
+      <pose frame=''>0 0 0 0 -0 0</pose>
+      <axis>
+        <xyz>0 0 1</xyz>
+        <use_parent_model_frame>1</use_parent_model_frame>
+        <!-- Drake attaches an actuator to all joints with a non-zero effort
+             limit. We do want an actuator for this joint. -->
+        <limit>
+          <effort>500</effort>
+        </limit>
+      </axis>
+    </joint>
+
+    <link name='body'>
+      <pose frame=''>-0.07 -0.065 0 0 -0 0</pose>
+      <inertial>
+        <mass>0.001</mass>
+        <inertia>
+          <ixx>0.00001</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>0.00001</iyy>
+          <iyz>0</iyz>
+          <izz>0.00001</izz>
+        </inertia>
+        <pose frame=''>0 0 0 0 -0 0</pose>
+      </inertial>
+      <visual name='visual'>
+        <pose frame=''>0 0 0 0 -0 0</pose>
+        <geometry>
+          <box>
+            <size>0.27 0.03 0.049521</size>
+          </box>
+        </geometry>
+      </visual>
+    </link>
+
+    <link name='left_bubble'>
+      <pose frame=''>-0.065 0.000 0 0 -0 0</pose>
+      <inertial>
+        <mass>0.1</mass>
+        <inertia>
+          <ixx>0.000281667</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>0.000281667</iyy>
+          <iyz>0</iyz>
+          <izz>0.000281667</izz>
+        </inertia>
+        <pose frame=''>0 0 0 0 -0 0</pose>
+      </inertial>
+      <visual name='visual'>
+        <pose frame=''>0 0 0 0 -0 0</pose>
+        <geometry>
+          <sphere>
+          <radius>0.065</radius>
+          </sphere>
+        </geometry>
+              <material name="orange">
+        <ambient> 0.8 0.45 0.2 1</ambient>
+        <diffuse> 0.8 0.45 0.2 1</diffuse>
+      </material>
+      </visual>
+    </link>
+    <link name='right_bubble'>
+      <pose frame=''>0.065 0.000 0 0 0 0</pose>
+      <inertial>
+        <mass>0.1</mass>
+        <inertia>
+          <ixx>0.000281667</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>0.000281667</iyy>
+          <iyz>0</iyz>
+          <izz>0.000281667</izz>
+        </inertia>
+        <pose frame=''>0 0 0 0 -0 0</pose>
+      </inertial>
+      <visual name='visual'>
+        <pose frame=''>0 0 0 0 -0 0</pose>
+        <geometry>
+          <sphere>
+          <radius>0.065</radius>
+          </sphere>
+        </geometry>
+        <material name="blue">
+        <ambient> 0.4 0.4 0.8 1</ambient>
+        <diffuse> 0.4 0.4 0.8 1</diffuse>
+      </material>
+      </visual>
+    </link>
+
+    <joint name='weld_right_bubble' type='fixed'>
+      <parent>body</parent>
+      <child>right_bubble</child>
+      <pose>0 0 0 0 0 0</pose>
+    </joint>
+
+    <joint name='bubble_sliding_joint' type='prismatic'>
+      <parent>right_bubble</parent>
+      <child>left_bubble</child>
+      <pose frame=''>0 0 0 0 -0 0</pose>
+      <axis>
+        <xyz>1 0 0</xyz>
+        <use_parent_model_frame>0</use_parent_model_frame>
+        <!-- Drake attaches an actuator to all joints with a non-zero effort
+             limit. We do want an actuator for this joint. -->
+        <limit>
+          <effort>500</effort>
+        </limit>
+      </axis>
+    </joint>
+  </model>
+</sdf>

@@ -226,7 +226,7 @@ float fBox(vec3 p, vec3 b) {
 }
 #endif
     // No-op. Enable this when  needed.
-    return;
+    //return;
 
     const GeometryImplementationData& specs =
         *reinterpret_cast<GeometryImplementationData*>(user_data);
