@@ -9,12 +9,19 @@
 #include "drake/geometry/scene_graph.h"
 #include "drake/lcm/drake_lcm.h"
 #include "drake/math/random_rotation.h"
+#include "drake/multibody/math/spatial_velocity.h"
 #include "drake/systems/analysis/implicit_euler_integrator.h"
 #include "drake/systems/analysis/runge_kutta2_integrator.h"
 #include "drake/systems/analysis/runge_kutta3_integrator.h"
 #include "drake/systems/analysis/semi_explicit_euler_integrator.h"
 #include "drake/systems/analysis/simulator.h"
 #include "drake/systems/framework/diagram_builder.h"
+
+
+#include <iostream>
+#define PRINT_VAR(a) std::cout << #a": " << a << std::endl;
+
+using drake::multibody::SpatialVelocity;
 
 namespace drake {
 namespace examples {
@@ -33,6 +40,18 @@ DEFINE_string(integration_scheme, "runge_kutta2",
 
 DEFINE_double(simulation_time, 10.0,
               "Desired duration of the simulation in seconds.");
+
+DEFINE_double(accuracy, 1.0e-3,
+              "Accurayc.");              
+
+DEFINE_double(elastic_modulus, 5.0e4, "Elastic modulus.");
+DEFINE_double(dissipation, 0.0, "dissipation.");
+DEFINE_double(friction_coefficient, 1.0, "friction coefficient.");
+DEFINE_double(max_time_step, 1.0e-3, "dissipation.");
+
+DEFINE_double(vx, 0.1, "Initial linear velocity in the x-axis.");
+DEFINE_double(wy, 2.0 * M_PI, "Initial angular velocity in the y-axis.");
+DEFINE_double(z0, 0.05, "Initial position in the z-axis.");
 
 using Eigen::AngleAxisd;
 using Eigen::Matrix3d;
@@ -57,26 +76,29 @@ int do_main() {
 
   // The target accuracy determines the size of the actual time steps taken
   // whenever a variable time step integrator is used.
-  const double target_accuracy = 0.001;
+  const double target_accuracy = FLAGS_accuracy;
 
   // Plant's parameters.
   const double radius = 0.05;   // m
   const double mass = 0.1;      // kg
   const double g = 9.81;        // m/s^2
-  const double z0 = 0.3;        // Initial height.
+  const double z0 = FLAGS_z0;        // Initial height.
   const CoulombFriction<double> coulomb_friction(
-      0.8 /* static friction */, 0.3 /* dynamic friction */);
+      FLAGS_friction_coefficient /* static friction */,
+      FLAGS_friction_coefficient /* dynamic friction */);
 
   MultibodyPlant<double>& plant = *builder.AddSystem(MakeBouncingBallPlant(
-      radius, mass, coulomb_friction, -g * Vector3d::UnitZ(), &scene_graph));
+      radius, mass, 
+      FLAGS_elastic_modulus, FLAGS_dissipation,
+      coulomb_friction, -g * Vector3d::UnitZ(), &scene_graph));
   // Set how much penetration (in meters) we are willing to accept.
   plant.set_penetration_allowance(0.001);
 
   // Hint the integrator's time step based on the contact time scale.
   // A fraction of this time scale is used which is chosen so that the fixed
   // time step integrators are stable.
-  const double max_time_step =
-      plant.get_contact_penalty_method_time_scale() / 30;
+  const double max_time_step = FLAGS_max_time_step;
+//      plant.get_contact_penalty_method_time_scale() / 30;
 
   DRAKE_DEMAND(plant.num_velocities() == 6);
   DRAKE_DEMAND(plant.num_positions() == 7);
@@ -108,6 +130,11 @@ int do_main() {
   math::RigidTransformd X_WB(R_WB, Vector3d(0.0, 0.0, z0));
   plant.SetFreeBodyPose(
       &plant_context, plant.GetBodyByName("Ball"), X_WB);
+
+  const SpatialVelocity<double> V_WB(Vector3d(0., FLAGS_wy, 0.),
+                                     Vector3d(FLAGS_vx, 0., 0.));
+  plant.SetFreeBodySpatialVelocity(
+      &plant_context, plant.GetBodyByName("Ball"), V_WB);    
 
   systems::Simulator<double> simulator(*diagram, std::move(diagram_context));
 
@@ -177,6 +204,14 @@ int do_main() {
   DRAKE_DEMAND(integrator->get_num_substep_failures() == 0);
   DRAKE_DEMAND(
       integrator->get_num_step_shrinkages_from_substep_failures() == 0);
+
+  if (!integrator->get_fixed_step_mode()) {
+    PRINT_VAR(integrator->get_target_accuracy());
+    PRINT_VAR(integrator->get_accuracy_in_use());
+    PRINT_VAR(integrator->get_smallest_adapted_step_size_taken());
+    PRINT_VAR(integrator->get_largest_step_size_taken());
+  }
+  PRINT_VAR(integrator->get_num_steps_taken());
 
   return 0;
 }

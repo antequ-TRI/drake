@@ -5,14 +5,9 @@
 #include "drake/math/rigid_transform.h"
 #include "drake/multibody/math/spatial_force.h"
 #include "drake/multibody/math/spatial_velocity.h"
-#include "drake/systems/framework/context.h"
 
 namespace drake {
 namespace multibody {
-
-template <class T>
-class MultibodyPlant;
-
 namespace internal {
 
 /**
@@ -29,38 +24,17 @@ class HydroelasticTractionCalculator {
  public:
   DRAKE_DEFAULT_COPY_AND_MOVE_AND_ASSIGN(HydroelasticTractionCalculator)
 
-  HydroelasticTractionCalculator() {}
-
-  /**
-   Gets the regularization parameter used for friction (in m/s). The closer
-   that this parameter is to zero, the closer that the regularized friction
-   model will approximate Coulomb friction.
-   */
-  double regularization_scalar() const { return vslip_regularizer_; }
-
-  /**
-   Applies the hydroelastic model to two geometries defined in `surface`,
-   resulting in a pair of spatial forces at the origins of two body frames.
-   The body frames, A and B, are those to which `surface.M_id()` and
-   `surface.N_id()` are affixed, respectively.
-   */
-  void ComputeSpatialForcesAtBodyOriginsFromHydroelasticModel(
-       const systems::Context<T>& context,
-       const MultibodyPlant<T>& plant,
-       const geometry::ContactSurface<T>& surface,
-       double dissipation, double mu_coulomb,
-       multibody::SpatialForce<T>* F_Ao_W,
-       multibody::SpatialForce<T>* F_Bo_W) const;
-
- private:
-  // To allow GTEST to test private functions.
-  friend class MultibodyPlantHydroelasticTractionTests;
+  HydroelasticTractionCalculator() = default;
 
   // Data structure for storing quantities used repeatedly in the hydroelastic
   // traction calculations.
-  class HydroelasticTractionCalculatorData {
-   public:
-    DRAKE_NO_COPY_NO_MOVE_NO_ASSIGN(HydroelasticTractionCalculatorData)
+  struct HydroelasticTractionCalculatorData {
+    //DRAKE_DEFAULT_COPY_AND_MOVE_AND_ASSIGN(HydroelasticTractionCalculatorData)
+
+    HydroelasticTractionCalculatorData(HydroelasticTractionCalculatorData&&) =
+        default;
+    HydroelasticTractionCalculatorData& operator=(
+        HydroelasticTractionCalculatorData&&) = default;
 
     // @param context the MultibodyPlant context.
     // @param plant the plant used to compute the data for the
@@ -69,10 +43,13 @@ class HydroelasticTractionCalculator {
     //        hydroelastic contact model that will be maintained for the life of
     //        this object.
     HydroelasticTractionCalculatorData(
-        const systems::Context<T>& context,
-        const MultibodyPlant<T>& plant,
-        const geometry::ContactSurface<T>* surface);
+        const geometry::ContactSurface<T>* surface,
+        const math::RigidTransform<T>& X_WM,
+        const math::RigidTransform<T>& X_WA,
+        const math::RigidTransform<T>& X_WB, const SpatialVelocity<T>& V_WA,
+        const SpatialVelocity<T>& V_WB, double dissipation, double mu_coulomb);
 
+#if 0
     // Gets the ContactSurface passed to the data structure on construction.
     const geometry::ContactSurface<T>& surface() const { return surface_; }
 
@@ -100,16 +77,43 @@ class HydroelasticTractionCalculator {
     // `surface.N_id()` in the contact surface is affixed to) at the origin of
     // B's frame, measured in the world frame and expressed in the world frame.
     const SpatialVelocity<T>& V_WB() const { return V_WB_; }
+#endif
 
-   private:
-    const geometry::ContactSurface<T>& surface_;
-    Vector3<T> p_WC_;
-    math::RigidTransform<T> X_WM_;
-    math::RigidTransform<T> X_WA_;
-    math::RigidTransform<T> X_WB_;
-    SpatialVelocity<T> V_WA_;
-    SpatialVelocity<T> V_WB_;
+    const geometry::ContactSurface<T>& surface;
+    Vector3<T> p_WC;
+    math::RigidTransform<T> X_WM;
+    math::RigidTransform<T> X_WA;
+    math::RigidTransform<T> X_WB;
+    SpatialVelocity<T> V_WA;
+    SpatialVelocity<T> V_WB;
+    double dissipation;
+    double mu_coulomb;
   };
+
+  explicit HydroelasticTractionCalculator(double vslip_regularizer)
+      : vslip_regularizer_(vslip_regularizer) {}
+
+  /**
+   Gets the regularization parameter used for friction (in m/s). The closer
+   that this parameter is to zero, the closer that the regularized friction
+   model will approximate Coulomb friction.
+   */
+  double regularization_scalar() const { return vslip_regularizer_; }
+
+  /**
+   Applies the hydroelastic model to two geometries defined in `surface`,
+   resulting in a pair of spatial forces at the origins of two body frames.
+   The body frames, A and B, are those to which `surface.M_id()` and
+   `surface.N_id()` are affixed, respectively.
+   */
+  void ComputeSpatialForcesAtBodyOriginsFromHydroelasticModel(
+      const HydroelasticTractionCalculatorData& data,
+      multibody::SpatialForce<T>* F_Ao_W,
+      multibody::SpatialForce<T>* F_Bo_W) const;
+
+ private:
+  // To allow GTEST to test private functions.
+  friend class MultibodyPlantHydroelasticTractionTests;
 
   Vector3<T> CalcTractionAtPoint(
       const HydroelasticTractionCalculatorData& data,

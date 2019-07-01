@@ -7,6 +7,9 @@
 /// current state of the hand, and a subscriber to read the posiiton commands
 /// of the finger joints.
 
+#include <string>
+#include <regex>
+
 #include <gflags/gflags.h>
 
 #include "drake/common/drake_assert.h"
@@ -33,6 +36,10 @@
 #include "drake/systems/lcm/lcm_subscriber_system.h"
 #include "drake/systems/primitives/matrix_gain.h"
 
+#include <iostream>
+#define PRINT_VAR(a) std::cout << #a": " << a << std::endl;
+
+
 namespace drake {
 namespace examples {
 namespace allegro_hand {
@@ -46,13 +53,17 @@ DEFINE_double(simulation_time, std::numeric_limits<double>::infinity(),
               "Desired duration of the simulation in seconds");
 DEFINE_bool(use_right_hand, true,
             "Which hand to model: true for right hand or false for left hand");
-DEFINE_double(max_time_step, 1.5e-4,
+DEFINE_double(max_time_step, 0,
               "Simulation time step used for intergrator.");
 DEFINE_bool(add_gravity, false,
             "Whether adding gravity (9.81 m/s^2) in the simulation");
 DEFINE_double(target_realtime_rate, 1,
               "Desired rate relative to real time.  See documentation for "
               "Simulator::set_target_realtime_rate() for details.");
+
+DEFINE_double(accuracy, 1e-3, "Desired Accuracy. ");
+DEFINE_double(elastic_modulus, 5.0e4, "Desired Accuracy. ");
+DEFINE_double(dissipation, 5.0, "Desired Accuracy. ");
 
 void DoMain() {
   DRAKE_DEMAND(FLAGS_simulation_time > 0);
@@ -83,6 +94,26 @@ void DoMain() {
   parser.AddModelFromFile(hand_model_path);
   parser.AddModelFromFile(object_model_path);
 
+  // Set the finger tips material properties.
+  //const double elastic_modulus = 5.0e4;
+  //const double dissipation = 5.0;
+  for (const auto& body_name : {"link_3", "link_7", "link_11", "link_15"}) {
+    const auto& body = plant.GetBodyByName(body_name);
+    PRINT_VAR(body_name);    
+    for (geometry::GeometryId id : plant.GetCollisionGeometriesForBody(body)) {
+      const std::string& geometry_name =
+          scene_graph.model_inspector().GetName(id);
+      PRINT_VAR(geometry_name);    
+      std::regex pattern(".*tip_collision.*");
+      if (std::regex_match(geometry_name.begin(), geometry_name.end(),
+                           pattern)) {
+        PRINT_VAR("match: " + geometry_name);
+        plant.set_elastic_modulus(id, FLAGS_elastic_modulus);
+        plant.set_hydroelastics_dissipation(id, FLAGS_dissipation);
+      }
+    }
+  }
+
   // Weld the hand to the world frame
   const auto& joint_hand_root = plant.GetBodyByName("hand_root");
   plant.AddJoint<multibody::WeldJoint>("weld_hand", plant.world_body(), nullopt,
@@ -107,7 +138,8 @@ void DoMain() {
                   plant.get_geometry_query_input_port());
 
   // Publish contact results for visualization.
-  multibody::ConnectContactResultsToDrakeVisualizer(&builder, plant, lcm);
+  if (plant.is_discrete())
+    multibody::ConnectContactResultsToDrakeVisualizer(&builder, plant, lcm);
 
   // PID controller for position control of the finger joints
   VectorX<double> kp, kd, ki;
@@ -186,6 +218,7 @@ void DoMain() {
 
   // Set up simulator.
   systems::Simulator<double> simulator(*diagram, std::move(diagram_context));
+  simulator.get_mutable_integrator().set_target_accuracy(FLAGS_accuracy);
   simulator.set_publish_every_time_step(true);
   simulator.set_target_realtime_rate(FLAGS_target_realtime_rate);
   simulator.Initialize();

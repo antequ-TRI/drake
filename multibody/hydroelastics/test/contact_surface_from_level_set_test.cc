@@ -360,10 +360,10 @@ TEST_F(BoxPlaneIntersectionTest, VerifyContactArea) {
   std::vector<double> e_b_surface;
   std::vector<Vector3<double>> level_set_gradient_H;
   for (const auto& X_HB : poses) {
-    const SurfaceMesh<double> contact_surface_H =
+    std::unique_ptr<SurfaceMesh<double>> contact_surface_H =
         CalcZeroLevelSetInMeshDomain(*box_B_, *half_space_H_, X_HB, e_b_,
                                      &e_b_surface, &level_set_gradient_H);
-    EXPECT_NEAR(CalcSurfaceArea(contact_surface_H), 1.0, kTolerance);
+    EXPECT_NEAR(CalcSurfaceArea(*contact_surface_H), 1.0, kTolerance);
   }
 }
 
@@ -379,15 +379,15 @@ TEST_F(BoxPlaneIntersectionTest, VerifySurfaceFieldsInterpolations) {
   std::vector<Vector3<double>> level_set_gradient_H;
   for (const auto& h : heights) {
     const RigidTransformd X_HB = Translation3<double>(0.0, 0.0, h);
-    const SurfaceMesh<double> contact_surface_H =
+    std::unique_ptr<SurfaceMesh<double>> contact_surface_H =
         CalcZeroLevelSetInMeshDomain(*box_B_, *half_space_H_, X_HB, e_b_,
                                      &e_b_surface, &level_set_gradient_H);
 
     const double eb_expected = 0.5 - h;
-    for (SurfaceVertexIndex v(0); v < contact_surface_H.num_vertices(); ++v) {
+    for (SurfaceVertexIndex v(0); v < contact_surface_H->num_vertices(); ++v) {
       const double eb = e_b_surface[v];
       const Vector3<double>& grad_level_set_H = level_set_gradient_H[v];
-      const Vector3<double>& p_HV = contact_surface_H.vertex(v).r_MV();
+      const Vector3<double>& p_HV = contact_surface_H->vertex(v).r_MV();
       const Vector3<double> level_set_gradient_H_expected =
           half_space_H_->gradient(p_HV);
       EXPECT_NEAR(eb, eb_expected, kTolerance);
@@ -431,10 +431,10 @@ TEST_F(BoxPlaneIntersectionTest, NoIntersection) {
   for (const auto& X_HB : poses) {
     std::vector<double> e_b_surface;
     std::vector<Vector3<double>> level_set_gradient_H;
-    const SurfaceMesh<double> contact_surface =
+    std::unique_ptr<SurfaceMesh<double>> contact_surface =
         CalcZeroLevelSetInMeshDomain(*box_B_, *half_space_H_, X_HB, e_b_,
                                      &e_b_surface, &level_set_gradient_H);
-    EXPECT_NEAR(CalcSurfaceArea(contact_surface), 0.0, kTolerance);
+    EXPECT_NEAR(CalcSurfaceArea(*contact_surface), 0.0, kTolerance);
   }
 }
 
@@ -486,16 +486,16 @@ GTEST_TEST(SpherePlaneIntersectionTest, VerifyInterpolations) {
   // case the world frame W.
   std::vector<double> e_m_surface;
   std::vector<Vector3<double>> level_set_gradient_W;
-  const SurfaceMesh<double> contact_surface_W =
+  std::unique_ptr<SurfaceMesh<double>> contact_surface_W =
       CalcZeroLevelSetInMeshDomain(sphere_M, half_space_W, X_WM, em_volume,
                                    &e_m_surface, &level_set_gradient_W);
   // Assert non-empty intersection.
-  ASSERT_GT(contact_surface_W.num_faces(), 0);
+  ASSERT_GT(contact_surface_W->num_faces(), 0);
 
-  ASSERT_EQ(e_m_surface.size(), contact_surface_W.num_vertices());
+  ASSERT_EQ(e_m_surface.size(), contact_surface_W->num_vertices());
 
-  for (SurfaceVertexIndex v(0); v < contact_surface_W.num_vertices(); ++v) {
-    const Vector3<double>& p_WV = contact_surface_W.vertex(v).r_MV();
+  for (SurfaceVertexIndex v(0); v < contact_surface_W->num_vertices(); ++v) {
+    const Vector3<double>& p_WV = contact_surface_W->vertex(v).r_MV();
     // We verify that the positions were correctly interpolated to lie on the
     // plane.
     EXPECT_NEAR(p_WV[2], 0.0, kTolerance);
@@ -520,12 +520,12 @@ GTEST_TEST(SpherePlaneIntersectionTest, VerifyInterpolations) {
   }
 
   // Verify all normals point towards the positive side of the plane.
-  for (SurfaceFaceIndex f(0); f < contact_surface_W.num_faces(); ++f) {
-    const SurfaceFace& face = contact_surface_W.element(f);
+  for (SurfaceFaceIndex f(0); f < contact_surface_W->num_faces(); ++f) {
+    const SurfaceFace& face = contact_surface_W->element(f);
     std::vector<SurfaceVertex<double>> vertices_W = {
-        contact_surface_W.vertex(face.vertex(0)),
-        contact_surface_W.vertex(face.vertex(1)),
-        contact_surface_W.vertex(face.vertex(2))};
+        contact_surface_W->vertex(face.vertex(0)),
+        contact_surface_W->vertex(face.vertex(1)),
+        contact_surface_W->vertex(face.vertex(2))};
     const Vector3<double> normal_W = CalcTriangleNormal(vertices_W);
     // We expect the normals to point in the same direction as the halfsapce's
     // outward facing normal, according to the convention used by

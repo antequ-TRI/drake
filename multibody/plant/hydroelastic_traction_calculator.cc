@@ -3,9 +3,7 @@
 #include <algorithm>
 #include <utility>
 
-#include "drake/math/orthonormal_basis.h"
 #include "drake/math/rotation_matrix.h"
-#include "drake/multibody/plant/multibody_plant.h"
 #include "drake/multibody/triangle_quadrature/gaussian_triangle_quadrature_rule.h"
 #include "drake/multibody/triangle_quadrature/triangle_quadrature.h"
 
@@ -15,11 +13,15 @@ using geometry::ContactSurface;
 using geometry::SurfaceFaceIndex;
 using geometry::SurfaceMesh;
 using math::RigidTransform;
-using systems::Context;
+
+#include <iostream>
+//#define PRINT_VAR(a) std::cout << #a": " << a << std::endl;
+#define PRINT_VAR(a) (void) a;
 
 namespace multibody {
 namespace internal {
 
+#if 0
 template <typename T>
 HydroelasticTractionCalculator<T>::HydroelasticTractionCalculatorData::
     HydroelasticTractionCalculatorData(const Context<T>& context,
@@ -53,29 +55,39 @@ HydroelasticTractionCalculator<T>::HydroelasticTractionCalculatorData::
   V_WA_ = plant.EvalBodySpatialVelocityInWorld(context, bodyA);
   V_WB_ = plant.EvalBodySpatialVelocityInWorld(context, bodyB);
 }
+#endif
+
+template <typename T>
+HydroelasticTractionCalculator<T>::HydroelasticTractionCalculatorData::
+    HydroelasticTractionCalculatorData(
+        const ContactSurface<T>* surface_in, const RigidTransform<T>& X_WM_in,
+        const RigidTransform<T>& X_WA_in, const RigidTransform<T>& X_WB_in,
+        const SpatialVelocity<T>& V_WA_in, const SpatialVelocity<T>& V_WB_in,
+        double dissipation_in, double mu_coulomb_in)
+    : surface(*surface_in),
+      X_WM(X_WM_in),
+      X_WA(X_WA_in),
+      X_WB(X_WB_in),
+      V_WA(V_WA_in),
+      V_WB(V_WB_in),
+      dissipation(dissipation_in),
+      mu_coulomb(mu_coulomb_in) {
+  DRAKE_DEMAND(surface_in);
+  const Vector3<T>& p_MC = surface.mesh().centroid();
+  p_WC = X_WM * p_MC;
+}
 
 template <class T>
 void HydroelasticTractionCalculator<T>::
 ComputeSpatialForcesAtBodyOriginsFromHydroelasticModel(
-    const Context<T>& context,
-    const MultibodyPlant<T>& plant,
-    const ContactSurface<T>& surface,
-    double dissipation, double mu_coulomb,
+    const HydroelasticTractionCalculatorData& data,
     SpatialForce<T>* F_Ao_W, SpatialForce<T>* F_Bo_W) const {
   DRAKE_DEMAND(F_Ao_W && F_Bo_W);
 
-  // Use a second-order Gaussian quadrature rule. For linear pressure fields,
-  // the second-order rule allows exact computation (to floating point error)
-  // of the moment on the bodies from the integral of the contact tractions.
-  // The moment r × f is a quadratic function of the surface location, since it
-  // is a linear operation (r × f) applied to a (typically) linear function
-  // (i.e., the traction, f). Higher-order pressure fields and nonlinear
-  // tractions (from, e.g., incorporating the Stribeck curve into the friction
-  // model) might see benefit from a higher-order quadrature.
+  // Use a second-order Gaussian quadrature rule. This will be exact for linear
+  // and quadratic pressure fields. We don't expect anything higher order.
+  // TODO(sherm1) Consider 1st-order quadrature for linear pressure fields.
   const GaussianTriangleQuadratureRule gaussian(2 /* order */);
-
-  // Collect kinematic data once.
-  const HydroelasticTractionCalculatorData data(context, plant, &surface);
 
   // We'll be accumulating force on body A at the surface centroid C,
   // triangle-by-triangle.
@@ -83,16 +95,17 @@ ComputeSpatialForcesAtBodyOriginsFromHydroelasticModel(
   F_Ac_W.SetZero();
 
   // Integrate the tractions over all triangles in the contact surface.
-  for (geometry::SurfaceFaceIndex i(0); i < surface.mesh().num_faces(); ++i) {
+  for (geometry::SurfaceFaceIndex i(0); i < data.surface.mesh().num_faces(); ++i) {
     // Construct the function to be integrated over triangle i.
     // TODO(sherm1) Pull functor creation out of the loop (not a good idea to
     //              create a new functor for every i).
     std::function<SpatialForce<T>(const Vector3<T>&)> traction_Ac_W =
-        [this, &data, i, dissipation,
-         mu_coulomb](const Vector3<T>& Q_barycentric) {
+        [this, &data, i, dissipation = data.dissipation,
+         mu_coulomb = data.mu_coulomb](const Vector3<T>& Q_barycentric) {
           Vector3<T> p_WQ;
           const Vector3<T> traction_Aq_W = CalcTractionAtPoint(
               data, i, Q_barycentric, dissipation, mu_coulomb, &p_WQ);
+          PRINT_VAR(traction_Aq_W.transpose());    
           return ComputeSpatialTractionAtAcFromTractionAtAq(data, p_WQ,
                                                             traction_Aq_W);
         };
@@ -101,7 +114,7 @@ ComputeSpatialForcesAtBodyOriginsFromHydroelasticModel(
     // tractions (force/area) at the Gauss points (shifted to C).
     const SpatialForce<T> Fi_Ac_W =  // Force from triangle i.
         TriangleQuadrature<SpatialForce<T>, T>::Integrate(
-            traction_Ac_W, gaussian, surface.mesh().area(i));
+            traction_Ac_W, gaussian, data.surface.mesh().area(i));
 
     // Update the spatial force at body A's origin.
     F_Ac_W += Fi_Ac_W;
@@ -110,9 +123,9 @@ ComputeSpatialForcesAtBodyOriginsFromHydroelasticModel(
   // The spatial force on body A was accumulated at the surface centroid C. We
   // need to shift it to A's origin Ao. The force on body B is equal and
   // opposite to the force on body A, but we want it as if applied at Bo.
-  const Vector3<T>& p_WC = data.p_WC();
-  const Vector3<T>& p_WAo = data.X_WA().translation();
-  const Vector3<T>& p_WBo = data.X_WB().translation();
+  const Vector3<T>& p_WC = data.p_WC;
+  const Vector3<T>& p_WAo = data.X_WA.translation();
+  const Vector3<T>& p_WBo = data.X_WB.translation();
   const Vector3<T> p_CAo_W = p_WAo - p_WC;
   const Vector3<T> p_CBo_W = p_WBo - p_WC;
 
@@ -138,7 +151,7 @@ SpatialForce<T> HydroelasticTractionCalculator<T>::
         const HydroelasticTractionCalculatorData& data, const Vector3<T>& p_WQ,
         const Vector3<T>& traction_Aq_W) const {
   // Find the vector from Q to C.
-  const Vector3<T> p_QC_W = data.p_WC() - p_WQ;
+  const Vector3<T> p_QC_W = data.p_WC - p_WQ;
 
   // Convert the traction to a momentless spatial traction (i.e., without
   // changing the point of application), then shift to body A's origin which
@@ -155,24 +168,31 @@ Vector3<T> HydroelasticTractionCalculator<T>::CalcTractionAtPoint(
     const typename SurfaceMesh<T>::Barycentric& Q_barycentric,
     double dissipation, double mu_coulomb, Vector3<T>* p_WQ) const {
   DRAKE_DEMAND(p_WQ != nullptr);
+
+  PRINT_VAR("-------------------------");
+  PRINT_VAR("-------------------------");
+
   // Compute the point of contact in the world frame.
-  const Vector3<T> p_MQ = data.surface().mesh().CalcCartesianFromBarycentric(
+  const Vector3<T> p_MQ = data.surface.mesh().CalcCartesianFromBarycentric(
       face_index, Q_barycentric);
-  *p_WQ = data.X_WM() * p_MQ;
+  *p_WQ = data.X_WM * p_MQ;
 
   // Get the "potential pressure" (in N/m²) at the point as defined in
   // [Elandt 2019]. Note that we drop the _MN suffix here and below, as this
   // suffix can get confused with the identical suffix (used for a different
   // purpose) employed by monogram notation.
-  const T E = data.surface().EvaluateE_MN(face_index, Q_barycentric);
+  const T E = data.surface.EvaluateE_MN(face_index, Q_barycentric);
 
   // Get the normal from Geometry M to Geometry N, expressed in the world frame,
   // to the contact surface at Point Q. By extension, this means that the normal
   // points from Body A to Body B.
-  const Vector3<T> h_M = data.surface().EvaluateGrad_h_MN_M(
+  const Vector3<T> h_M = data.surface.EvaluateGrad_h_MN_M(
       face_index, Q_barycentric);
   const Vector3<T> nhat_M = h_M.normalized();
-  const Vector3<T> nhat_W = data.X_WM().rotation() * nhat_M;
+  const Vector3<T> nhat_W = data.X_WM.rotation() * nhat_M;
+
+  PRINT_VAR(E);
+  PRINT_VAR(nhat_W.transpose());
 
   // Get the relative spatial velocity at the point Q between the
   // two bodies A and B (to which M and N are affixed, respectively) by
@@ -181,18 +201,25 @@ Vector3<T> HydroelasticTractionCalculator<T>::CalcTractionAtPoint(
   // Body A.
 
   // First compute the spatial velocity of Body A at Aq.
-  const Vector3<T> p_AoAq_W = *p_WQ - data.X_WA().translation();
-  const SpatialVelocity<T> V_WAq = data.V_WA().Shift(p_AoAq_W);
+  const Vector3<T> p_AoAq_W = *p_WQ - data.X_WA.translation();
+  const SpatialVelocity<T> V_WAq = data.V_WA.Shift(p_AoAq_W);
 
   // Next compute the spatial velocity of Body B at Bq.
-  const Vector3<T> p_BoBq_W = *p_WQ - data.X_WB().translation();
-  const SpatialVelocity<T> V_WBq = data.V_WB().Shift(p_BoBq_W);
+  const Vector3<T> p_BoBq_W = *p_WQ - data.X_WB.translation();
+  const SpatialVelocity<T> V_WBq = data.V_WB.Shift(p_BoBq_W);
+
+  PRINT_VAR(data.V_WA);
+  PRINT_VAR(data.V_WB);
 
   // Finally compute the relative velocity of Frame Aq relative to Frame Bq,
   // expressed in the world frame, and then the translational component of this
   // velocity.
   const SpatialVelocity<T> V_BqAq_W = V_WAq - V_WBq;
   const Vector3<T>& v_BqAq_W = V_BqAq_W.translational();
+
+  PRINT_VAR(V_WAq);     
+  PRINT_VAR(V_WBq);
+  PRINT_VAR(v_BqAq_W);   
 
   // Get the velocity along the normal to the contact surface. Note that a
   // positive value indicates that bodies are separating at Q while a negative
@@ -206,7 +233,7 @@ Vector3<T> HydroelasticTractionCalculator<T>::CalcTractionAtPoint(
 
   // Determine the normal traction at the point.
   using std::max;
-  const T normal_traction = max(E - vn_BqAq_W * c, T(0));
+  const T normal_traction = max(E + vn_BqAq_W * c, T(0));
 
   // Get the slip velocity at the point.
   const Vector3<T> vt_BqAq_W = v_BqAq_W - nhat_W * vn_BqAq_W;
@@ -221,11 +248,32 @@ Vector3<T> HydroelasticTractionCalculator<T>::CalcTractionAtPoint(
 
   // Get the regularized direction of slip.
   const Vector3<T> vt_hat_BqAq_W = vt_BqAq_W / soft_norm_vt;
+  
+  PRINT_VAR(vt_BqAq_W);  
+  PRINT_VAR(norm_vt);
+
+  const T mu_dimensionless = 2.0 / M_PI * atan(norm_vt / T(vslip_regularizer_));
+  const T mu_regularized = mu_coulomb * mu_dimensionless;
+  const T tangent_traction_norm = mu_regularized * normal_traction;
+
+  // The normal force has a negative sign since we want the force on M. The
+  // normal points from M to N.  
+  const Vector3<T> fn_M_W = -normal_traction * nhat_W;
+  const Vector3<T> ft_M_W = -tangent_traction_norm * vt_hat_BqAq_W;
+
+  PRINT_VAR(mu_dimensionless);
+  PRINT_VAR(mu_regularized);
+  PRINT_VAR(tangent_traction_norm);
+  PRINT_VAR(vt_hat_BqAq_W.transpose());
+  PRINT_VAR(fn_M_W.transpose());
+  PRINT_VAR(ft_M_W.transpose());
+
+  return fn_M_W + ft_M_W;
 
   // Compute the traction.
-  const T frictional_scalar = mu_coulomb * normal_traction *
-      2.0 / M_PI * atan(norm_vt / T(vslip_regularizer_));
-  return nhat_W * normal_traction - vt_hat_BqAq_W * frictional_scalar;
+  //const T frictional_scalar = mu_coulomb * normal_traction *
+  //    2.0 / M_PI * atan(norm_vt / T(vslip_regularizer_));
+  //return nhat_W * normal_traction - vt_hat_BqAq_W * frictional_scalar;
 }
 
 }  // namespace internal

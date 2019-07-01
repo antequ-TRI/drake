@@ -17,6 +17,7 @@
 #include "drake/common/random.h"
 #include "drake/geometry/scene_graph.h"
 #include "drake/math/rigid_transform.h"
+#include "drake/multibody/hydroelastics/hydroelastic_engine.h"
 #include "drake/multibody/plant/contact_jacobians.h"
 #include "drake/multibody/plant/contact_results.h"
 #include "drake/multibody/plant/coulomb_friction.h"
@@ -31,6 +32,10 @@
 #include "drake/systems/framework/diagram_builder.h"
 #include "drake/systems/framework/leaf_system.h"
 #include "drake/systems/framework/scalar_conversion_traits.h"
+
+#include <iostream>
+//#define PRINT_VAR(a) std::cout << #a": " << a << std::endl;
+#define PRINT_VAR(a) (void) a;
 
 namespace drake {
 namespace multibody {
@@ -231,6 +236,8 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
     geometry_id_to_visual_index_ = other.geometry_id_to_visual_index_;
     geometry_id_to_collision_index_ = other.geometry_id_to_collision_index_;
     default_coulomb_friction_ = other.default_coulomb_friction_;
+    default_modulus_of_elasticity_ = other.default_modulus_of_elasticity_;
+    default_dissipation_ = other.default_dissipation_;
     visual_geometries_ = other.visual_geometries_;
     collision_geometries_ = other.collision_geometries_;
     if (geometry_source_is_registered())
@@ -2708,6 +2715,59 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
     return default_coulomb_friction_[collision_index];
   }
 
+  void set_elastic_modulus(geometry::GeometryId id, double elastic_modulus) {
+    // It must not be finalized so that member_scene_graph() is valid.
+    DRAKE_MBP_THROW_IF_FINALIZED();
+    DRAKE_DEMAND(is_collision_geometry(id));
+    const int collision_index = geometry_id_to_collision_index_.at(id);
+    // TODO: get rid of default_modulus_of_elasticity_.
+    default_modulus_of_elasticity_[collision_index] = elastic_modulus;
+
+    geometry::ProximityProperties* properties =
+        member_scene_graph().GetMutableProximityProperties(*source_id_, id);
+
+    if (!properties) {
+      throw std::runtime_error("The geometry with this id " 
+                               " does not have a proximity role.");
+    }
+
+    properties->AddProperty("hydroelastics", "elastic modulus",
+                            elastic_modulus);
+  }
+
+  void set_elastic_modulus(const Body<T>& body, double elastic_modulus) {
+    for (geometry::GeometryId id : GetCollisionGeometriesForBody(body))
+      set_elastic_modulus(id, elastic_modulus);
+  }
+
+  void set_hydroelastics_dissipation(geometry::GeometryId id,
+                                     double dissipation) {
+    // It must not be finalized so that member_scene_graph() is valid.
+    DRAKE_MBP_THROW_IF_FINALIZED();
+    DRAKE_DEMAND(is_collision_geometry(id));
+    const int collision_index = geometry_id_to_collision_index_.at(id);
+    // TODO: get rid of default_dissipation_.
+    default_dissipation_[collision_index] = dissipation;
+    geometry::ProximityProperties* properties =
+        member_scene_graph().GetMutableProximityProperties(*source_id_, id);
+    if (!properties) {
+      throw std::runtime_error("The geometry with this id " 
+                               " does not have a proximity role.");
+    }
+    properties->AddProperty("hydroelastics", "dissipation", dissipation);
+  }
+
+  void set_hydroelastics_dissipation(const Body<T>& body, double dissipation) {
+    for (geometry::GeometryId id : GetCollisionGeometriesForBody(body))
+      set_hydroelastics_dissipation(id, dissipation);
+  }
+
+  double default_modulus_of_elasticity(geometry::GeometryId id) const {
+    DRAKE_DEMAND(is_collision_geometry(id));
+    const int collision_index = geometry_id_to_collision_index_.at(id);
+    return default_modulus_of_elasticity_[collision_index];
+  }
+
   /// @name Retrieving ports for communication with a SceneGraph.
   /// @{
 
@@ -3440,6 +3500,15 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
       std::is_same<T, symbolic::Expression>::value,
       SceneGraphStub, geometry::SceneGraph<T>>::type;
 
+#if 0
+  // MemberHydroelasticsEngine is an alias for HydroelasticsEngine<T>, except
+  // when T = Expression.
+  struct HydroelasticEngineStub;
+  using MemberHydroelasticEngine = typename std::conditional<
+      std::is_same<T, symbolic::Expression>::value, HydroelasticEngineStub,
+      hydroelastic::internal::HydroelasticEngine<T>>::type;
+#endif
+
   // Returns the SceneGraph that pre-Finalize geometry operations should
   // interact with.  In most cases, that will be whatever the user has passed
   // into RegisterAsSourceForSceneGraph.  However, when T = Expression, the
@@ -3664,6 +3733,10 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
       const internal::VelocityKinematicsCache<T>& vc,
       const std::vector<geometry::PenetrationAsPointPair<T>>& point_pairs,
       std::vector<SpatialForce<T>>* F_BBo_W_array) const;
+
+  void CalcAndAddHydroelasticsContactForces(
+    const systems::Context<T>& context,
+    std::vector<SpatialForce<T>>* F_BBo_W_array) const;
 
   // Helper method to add the contribution of external actuation forces to the
   // set of multibody `forces`. External actuation is applied through the
@@ -3900,6 +3973,13 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   // See geometry_id_to_collision_index_.
   std::vector<CoulombFriction<double>> default_coulomb_friction_;
 
+  // Modulus of elasticity coefficients ordered by collision index.
+  // See geometry_id_to_collision_index_.
+  std::vector<double> default_modulus_of_elasticity_;
+
+  // Hydroelastic model dissipation, in s/m.
+  std::vector<double> default_dissipation_;
+
   // Port handles for geometry:
   systems::InputPortIndex geometry_query_port_;
   systems::OutputPortIndex geometry_pose_port_;
@@ -3953,6 +4033,9 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
 
   // The solver used when the plant is modeled as a discrete system.
   std::unique_ptr<ImplicitStribeckSolver<T>> implicit_stribeck_solver_;
+
+  std::unique_ptr<hydroelastic::internal::HydroelasticEngine<T>>
+      hydroelastics_engine_;
 
   // All MultibodyPlant cache indexes are stored in cache_indexes_.
   CacheIndexes cache_indexes_;
@@ -4087,6 +4170,11 @@ template <>
 std::vector<geometry::PenetrationAsPointPair<AutoDiffXd>>
 MultibodyPlant<AutoDiffXd>::CalcPointPairPenetrations(
     const systems::Context<AutoDiffXd>&) const;
+
+template <>
+void MultibodyPlant<symbolic::Expression>::CalcAndAddHydroelasticsContactForces(
+    const systems::Context<symbolic::Expression>& context,
+    std::vector<SpatialForce<symbolic::Expression>>* F_BBo_W_array) const;
 #endif
 
 }  // namespace multibody

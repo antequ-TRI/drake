@@ -282,7 +282,7 @@ int IntersectTetWithLevelSet(const std::array<Vector3<T>, 4>& tet_vertices_N,
 ///
 /// @note  The SurfaceMesh may have duplicate vertices.
 template <typename T>
-SurfaceMesh<T> CalcZeroLevelSetInMeshDomain(
+std::unique_ptr<SurfaceMesh<T>> CalcZeroLevelSetInMeshDomain(
     const VolumeMesh<T>& mesh_M, const LevelSetField<T>& phi_N,
     const math::RigidTransform<T>& X_NM, const std::vector<T>& e_m_volume,
     std::vector<T>* e_m_surface,
@@ -324,7 +324,8 @@ SurfaceMesh<T> CalcZeroLevelSetInMeshDomain(
     (*phi_gradient_N)[v] = phi_N.gradient(p_NV);
   }
 
-  return SurfaceMesh<T>(std::move(faces), std::move(vertices_N));
+  return std::make_unique<SurfaceMesh<T>>(std::move(faces),
+                                          std::move(vertices_N));
 }
 
 }  // namespace internal
