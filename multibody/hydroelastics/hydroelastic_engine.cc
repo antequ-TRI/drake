@@ -239,7 +239,7 @@ float fBox(vec3 p, vec3 b) {
     const Vector3<double> half_sizes = box.size() / 2.0;
 
     std::function<T(const Vector3<T>&)> box_sdf =
-        [&half_sizes](const Vector3<T>& p_WQ) {
+        [half_sizes](const Vector3<T>& p_WQ) {
           const Vector3<T> slabs_sdf = p_WQ.cwiseAbs() - half_sizes;
           // SDF inside the box. It is negative inside and zero outside.
           const T inside_sdf = slabs_sdf.cwiseMin(T(0)).maxCoeff();
@@ -249,7 +249,7 @@ float fBox(vec3 p, vec3 b) {
         };
 
     std::function<Vector3<T>(const Vector3<T>&)> grad_box_sdf =
-        [&half_sizes](const Vector3<T>& p_WQ) {
+        [half_sizes](const Vector3<T>& p_WQ) {
           const Vector3<T> slabs_sdf = p_WQ.cwiseAbs() - half_sizes;
           // SDF inside the box. It is negative inside and zero outside.
           int max_index;
