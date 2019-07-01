@@ -140,7 +140,7 @@ class HydroelasticEngine<symbolic::Expression> {
   ~HydroelasticEngine() {}
 
   std::vector<geometry::ContactSurface<T>> ComputeContactSurfaces(
-      const geometry::QueryObject<T>& query_object) const {
+      const geometry::QueryObject<T>& ) const {
     Throw("ComputeContactSurfaces");
     return std::vector<geometry::ContactSurface<T>>();
   }

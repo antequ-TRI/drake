@@ -201,7 +201,7 @@ class HydroelasticEngine<T>::Impl final : public geometry::ShapeReifier {
     // throw std::logic_error("There is no support for cylinders yet.");
   }
 
-  void ImplementGeometry(const HalfSpace& half_space,
+  void ImplementGeometry(const HalfSpace&,
                          void* user_data) override {
     const GeometryImplementationData& specs =
         *reinterpret_cast<GeometryImplementationData*>(user_data);
@@ -212,7 +212,7 @@ class HydroelasticEngine<T>::Impl final : public geometry::ShapeReifier {
     }
     auto level_set = std::make_unique<geometry::LevelSetField<T>>(
         [](const Vector3<T>& p) { return p[2]; },
-        [](const Vector3<T>& p) { return Vector3<double>::UnitZ(); });
+        [](const Vector3<T>& ) { return Vector3<T>::UnitZ(); });
     model_data_.geometry_id_to_model_[specs.id] =
         std::make_unique<HydroelasticModel<T>>(std::move(level_set));
   }
@@ -275,11 +275,11 @@ float fBox(vec3 p, vec3 b) {
         std::make_unique<HydroelasticModel<T>>(std::move(level_set));
   }
 
-  void ImplementGeometry(const Mesh& mesh, void* user_data) override {
+  void ImplementGeometry(const Mesh& , void* ) override {
     throw std::logic_error("There is no support for general meshes yet.");
   }
 
-  void ImplementGeometry(const Convex& convex, void* user_data) override {
+  void ImplementGeometry(const Convex& , void* ) override {
     throw std::logic_error("There is no support for convex geometry yet.");
   }
 

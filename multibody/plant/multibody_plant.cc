@@ -1355,8 +1355,8 @@ void MultibodyPlant<T>::CalcAndAddHydroelasticsContactForces(
 // specialize for symbolic
 template <>
 void MultibodyPlant<symbolic::Expression>::CalcAndAddHydroelasticsContactForces(
-    const systems::Context<symbolic::Expression>& context,
-    std::vector<SpatialForce<symbolic::Expression>>* F_BBo_W_array) const {
+    const systems::Context<symbolic::Expression>& ,
+    std::vector<SpatialForce<symbolic::Expression>>* ) const {
   throw std::runtime_error("symbolic not supported");
 }
 
