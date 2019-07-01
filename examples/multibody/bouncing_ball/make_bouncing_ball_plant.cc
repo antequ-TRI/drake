@@ -59,7 +59,7 @@ MakeBouncingBallPlant(double radius, double mass,
     const Vector4<double> orange(1.0, 0.55, 0.0, 1.0);
     plant->RegisterVisualGeometry(ball, X_BS, Sphere(radius), "visual", orange);
 
-    const Vector4<double> purple(0.6, 0.2, 0.8, 1.0);
+    const Vector4<double> purple(1.0, 0.0, 0.0, 1.0);
     const double visual_radius = 0.2 * radius;
     plant->RegisterVisualGeometry(ball, Eigen::Translation3d(0., 0., radius),
                                   Sphere(visual_radius), "sphere_z+", purple);
