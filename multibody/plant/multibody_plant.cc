@@ -1544,17 +1544,18 @@ void MultibodyPlant<T>::DoCalcTimeDerivatives(
   std::vector<SpatialForce<T>>& F_BBo_W_array = forces.mutable_body_forces();
   VectorX<T>& tau_array = forces.mutable_generalized_forces();
 
-#if 0
-  // Compute contact forces on each body by penalty method.
-  if (num_collision_geometries() > 0) {
-    const std::vector<PenetrationAsPointPair<T>>& point_pairs =
-        EvalPointPairPenetrations(context);
-    CalcAndAddContactForcesByPenaltyMethod(
-        context, pc, vc, point_pairs, &F_BBo_W_array);
+  if (use_hydroelastic_model_) {
+    CalcAndAddHydroelasticsContactForces(context, &F_BBo_W_array);
+  } else {
+    // We use point contact.
+    // Compute contact forces on each body by penalty method.
+    if (num_collision_geometries() > 0) {
+      const std::vector<PenetrationAsPointPair<T>>& point_pairs =
+          EvalPointPairPenetrations(context);
+      CalcAndAddContactForcesByPenaltyMethod(context, pc, vc, point_pairs,
+                                             &F_BBo_W_array);
+    }
   }
-#endif
-
-  CalcAndAddHydroelasticsContactForces(context, &F_BBo_W_array);
 
   internal_tree().CalcInverseDynamics(
       context, vdot,

@@ -61,6 +61,9 @@ DEFINE_double(target_realtime_rate, 1,
               "Desired rate relative to real time.  See documentation for "
               "Simulator::set_target_realtime_rate() for details.");
 
+DEFINE_string(contact_model, "point",
+              "Contact model. Options are: 'point', 'hydroelastic'.");
+
 DEFINE_double(accuracy, 1e-3, "Desired Accuracy. ");
 DEFINE_double(elastic_modulus, 5.0e4, "Desired Accuracy. ");
 DEFINE_double(dissipation, 5.0, "Desired Accuracy. ");
@@ -77,6 +80,15 @@ void DoMain() {
 
   MultibodyPlant<double>& plant =
       *builder.AddSystem<MultibodyPlant>(FLAGS_max_time_step);
+  if (FLAGS_contact_model == "hydroelastic") {
+    plant.use_hydroelastic_model(true);    
+  } else if (FLAGS_contact_model == "point") {
+      plant.use_hydroelastic_model(false);
+  } else {
+    throw std::runtime_error("Invalid contact model: '" + FLAGS_contact_model +
+                             "'.");
+  }
+
   plant.RegisterAsSourceForSceneGraph(&scene_graph);
   std::string hand_model_path;
   if (FLAGS_use_right_hand)

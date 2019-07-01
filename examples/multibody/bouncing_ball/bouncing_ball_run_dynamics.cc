@@ -53,6 +53,9 @@ DEFINE_double(vx, 0.1, "Initial linear velocity in the x-axis.");
 DEFINE_double(wy, 2.0 * M_PI, "Initial angular velocity in the y-axis.");
 DEFINE_double(z0, 0.05, "Initial position in the z-axis.");
 
+DEFINE_string(contact_model, "point",
+              "Contact model. Options are: 'point', 'hydroelastic'.");
+
 using Eigen::AngleAxisd;
 using Eigen::Matrix3d;
 using Eigen::Vector3d;
@@ -91,6 +94,16 @@ int do_main() {
       radius, mass, 
       FLAGS_elastic_modulus, FLAGS_dissipation,
       coulomb_friction, -g * Vector3d::UnitZ(), &scene_graph));
+
+  if (FLAGS_contact_model == "hydroelastic") {
+    plant.use_hydroelastic_model(true);
+  } else if (FLAGS_contact_model == "point") {
+    plant.use_hydroelastic_model(false);
+  } else {
+    throw std::runtime_error("Invalid contact model: '" + FLAGS_contact_model +
+                             "'.");
+  }
+
   // Set how much penetration (in meters) we are willing to accept.
   plant.set_penetration_allowance(0.001);
 

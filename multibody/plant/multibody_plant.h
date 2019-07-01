@@ -2715,6 +2715,16 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
     return default_coulomb_friction_[collision_index];
   }
 
+  /// If `use_hydro` MBP uses the hydroelastic model. Otherwise it uses point
+  /// contact model.
+  void use_hydroelastic_model(bool use_hydro = true) {
+    if (is_discrete() && use_hydro) {
+      throw std::runtime_error(
+          "The hydroelastic model is only supported in continuous mode.");
+    }
+    use_hydroelastic_model_ = use_hydro;
+  }
+
   void set_elastic_modulus(geometry::GeometryId id, double elastic_modulus) {
     // It must not be finalized so that member_scene_graph() is valid.
     DRAKE_MBP_THROW_IF_FINALIZED();
@@ -3972,6 +3982,9 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   // Friction coefficients ordered by collision index.
   // See geometry_id_to_collision_index_.
   std::vector<CoulombFriction<double>> default_coulomb_friction_;
+
+  // If true we use the hydroelastic model. Only available in continuous mode.
+  bool use_hydroelastic_model_{false};
 
   // Modulus of elasticity coefficients ordered by collision index.
   // See geometry_id_to_collision_index_.

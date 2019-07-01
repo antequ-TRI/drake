@@ -201,7 +201,7 @@ class HydroelasticEngine<T>::Impl final : public geometry::ShapeReifier {
     // throw std::logic_error("There is no support for cylinders yet.");
   }
 
-  void ImplementGeometry(const HalfSpace&,
+  void ImplementGeometry(const HalfSpace& /*half_space*/,
                          void* user_data) override {
     const GeometryImplementationData& specs =
         *reinterpret_cast<GeometryImplementationData*>(user_data);
@@ -212,7 +212,7 @@ class HydroelasticEngine<T>::Impl final : public geometry::ShapeReifier {
     }
     auto level_set = std::make_unique<geometry::LevelSetField<T>>(
         [](const Vector3<T>& p) { return p[2]; },
-        [](const Vector3<T>& ) { return Vector3<T>::UnitZ(); });
+        [](const Vector3<T>& /* p */) { return Vector3<T>::UnitZ(); });
     model_data_.geometry_id_to_model_[specs.id] =
         std::make_unique<HydroelasticModel<T>>(std::move(level_set));
   }
