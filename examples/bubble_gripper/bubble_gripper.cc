@@ -73,7 +73,7 @@ DEFINE_double(max_time_step, 1.0e-3,
               "is used.");
 DEFINE_double(accuracy, 1.0e-2, "Sets the simulation accuracy for variable step"
               "size integrators with error control.");
-DEFINE_bool(time_stepping, true, "If 'true', the plant is modeled as a "
+DEFINE_bool(time_stepping, false, "If 'true', the plant is modeled as a "
     "discrete system with periodic updates of period 'max_time_step'."
     "If 'false', the plant is modeled as a continuous system.");
 
@@ -88,9 +88,9 @@ DEFINE_double(v_stiction_tolerance, 1.0e-2,
 DEFINE_int32(ring_samples, 8,
              "The number of spheres used to sample the pad ring");
 DEFINE_double(ring_orient, 0, "Rotation of the pads around x-axis. [degrees]");
-DEFINE_double(ring_static_friction, 0.3, "The coefficient of static friction "
+DEFINE_double(ring_static_friction, 1.0, "The coefficient of static friction "
               "for the ring pad.");
-DEFINE_double(ring_dynamic_friction, 0.2, "The coefficient of dynamic friction "
+DEFINE_double(ring_dynamic_friction, 0.7, "The coefficient of dynamic friction "
               "for the ring pad.");
 
 // Parameters for rotating the mug.
@@ -102,15 +102,15 @@ DEFINE_double(rz, 0, "The z-rotation of the mug around its origin - the center "
               "of its bottom. [degrees]. Extrinsic rotation order: X, Y, Z");
 
 
-DEFINE_double(boxz, 0, "The z-coordinate of the box");
+DEFINE_double(boxz, -0.12, "The z-coordinate of the box");
 
 // Gripping force.
-DEFINE_double(gripper_force, 5, "The force to be applied by the gripper. [N]. "
+DEFINE_double(gripper_force, 10, "The force to be applied by the gripper. [N]. "
               "A value of 0 indicates a fixed grip width as set with option "
               "grip_width.");
 
 // Parameters for shaking the mug.
-DEFINE_double(amplitude, 0.15, "The amplitude of the harmonic oscillations "
+DEFINE_double(amplitude, 0.2, "The amplitude of the harmonic oscillations "
               "carried out by the gripper. [m].");
 DEFINE_double(frequency, 2.0, "The frequency of the harmonic oscillations "
               "carried out by the gripper. [Hz].");
@@ -352,7 +352,7 @@ int do_main() {
   // The mass of the gripper in simple_gripper.sdf.
   // TODO(amcastro-tri): we should call MultibodyPlant::CalcMass() here.
   // TODO ANTE: figure out how to set these forces based on new mass
-  const double mass = 0.2;  // kg.
+  const double mass = 0.6;  // kg.
   const double omega = 2 * M_PI * FLAGS_frequency;  // rad/s.
   const double x0 = FLAGS_amplitude;  // meters.
   const double v0 = -x0 * omega;  // Velocity amplitude, initial velocity, m/s.
