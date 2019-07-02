@@ -50,7 +50,10 @@ namespace bubble_gripper {
 		DRAKE_NO_COPY_NO_MOVE_NO_ASSIGN(BubbleGripperCommon);
 		/* this is really bad drake style. but just know these are passed by reference! */
 		static std::unique_ptr<systems::Diagram<double>> make_diagram(DrakeLcm& lcm,
-	                                    MultibodyPlant<double>*& plant_ptr, double& v0, bool lqr, const SimFlags& flags);
+	                                    MultibodyPlant<double>*& plant_ptr, double& v0, bool lqr_fixed, const SimFlags& flags);
+
+		static void make_bubbles_mbp_setup(systems::DiagramBuilder<double>& builder, DrakeLcm& lcm, 
+        								MultibodyPlant<double>*& plant_ptr, double& v0, bool lqr_fixed, const SimFlags& flags);
 		static void init_context_poses(systems::Context<double>& plant_context, 
 	                                    MultibodyPlant<double>& plant, double v0, const SimFlags& flags);
 		static void simulate_bubbles(systems::Simulator<double>& simulator, const MultibodyPlant<double>& plant,

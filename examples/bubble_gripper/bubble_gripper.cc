@@ -157,12 +157,12 @@ int do_main() {
         diagram->GetMutableSubsystemContext(plant, diagram_context.get());
     BubbleGripperCommon::init_context_poses(plant_context, plant, v0, flags);
 
-  // Set up simulator.
-  systems::Simulator<double> simulator(*diagram, std::move(diagram_context));
+    // Set up simulator.
+    systems::Simulator<double> simulator(*diagram, std::move(diagram_context));
   
     BubbleGripperCommon::simulate_bubbles(simulator, plant, diagram.get(), flags );
     BubbleGripperCommon::print_states(plant, plant_context, flags);
-  return 0;
+    return 0;
 }
 
 }  // namespace

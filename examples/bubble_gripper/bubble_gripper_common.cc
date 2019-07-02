@@ -141,8 +141,9 @@ void AddCollisionGeom(MultibodyPlant<double>* plant, const double bubble_radius,
 
 }
 
-void make_bubbles_mbp_setup(systems::DiagramBuilder<double>& builder, DrakeLcm& lcm, 
-        MultibodyPlant<double>*& plant_ptr, double& v0, bool lqr, const SimFlags& flags) 
+void BubbleGripperCommon::make_bubbles_mbp_setup(systems::DiagramBuilder<double>& builder, DrakeLcm& lcm, 
+        MultibodyPlant<double>*& plant_ptr, double& v0, bool lqr_fixed, const SimFlags& flags)
+        //SceneGraph<double>*& scene_graph_ptr, ) 
 {
     SceneGraph<double>& scene_graph = *builder.AddSystem<SceneGraph>();
     scene_graph.set_name("scene_graph");
@@ -253,8 +254,6 @@ void make_bubbles_mbp_setup(systems::DiagramBuilder<double>& builder, DrakeLcm& 
     // Sanity check on the availability of the optional source id before using it.
     DRAKE_DEMAND(!!plant.get_source_id());
 
-    builder.Connect(scene_graph.get_query_output_port(),
-                    plant.get_geometry_query_input_port());
 
 
     geometry::ConnectDrakeVisualizer(&builder, scene_graph, &lcm);
@@ -281,7 +280,7 @@ void make_bubbles_mbp_setup(systems::DiagramBuilder<double>& builder, DrakeLcm& 
     // TODO ANTE: figure out how to set these forces based on new mass
     const double mass = 0.6;  // kg.
     const double omega = 2 * M_PI * flags.FLAGS_frequency;  // rad/s.
-    const double x0 = lqr ? 0.0 : flags.FLAGS_amplitude ;  // meters.
+    const double x0 = lqr_fixed ? 0.0 : flags.FLAGS_amplitude ;  // meters.
     v0 = -x0 * omega;  // Velocity amplitude, initial velocity, m/s.
     const double a0 = omega * omega * x0;  // Acceleration amplitude, m/s².
     const double f0 = mass * a0;  // Force amplitude, Newton.
@@ -300,15 +299,17 @@ void make_bubbles_mbp_setup(systems::DiagramBuilder<double>& builder, DrakeLcm& 
     const auto& harmonic_force = *builder.AddSystem<Sine>(
         amplitudes, frequencies, phases);
 
+    builder.Connect(scene_graph.get_query_output_port(),
+                    plant.get_geometry_query_input_port());
     builder.Connect(harmonic_force.get_output_port(0),
                     plant.get_actuation_input_port());
 }
 /* this is really bad drake style. but just know these are passed by reference! */
 std::unique_ptr<systems::Diagram<double>> BubbleGripperCommon::make_diagram(DrakeLcm& lcm, 
-        MultibodyPlant<double>*& plant_ptr, double& v0, bool lqr, const SimFlags& flags) 
+        MultibodyPlant<double>*& plant_ptr, double& v0, bool lqr_fixed, const SimFlags& flags) 
 {
     systems::DiagramBuilder<double> builder;
-    make_bubbles_mbp_setup(builder, lcm, plant_ptr, v0, lqr, flags);
+    BubbleGripperCommon::make_bubbles_mbp_setup(builder, lcm, plant_ptr, v0, lqr_fixed, flags);
     return builder.Build();
 }
 
