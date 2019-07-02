@@ -22,23 +22,17 @@ filegroup(
     visibility = ["//visibility:public"],
 )
 
-drake_cc_binary(
-    name = "bubble_gripper",
-    srcs = ["bubble_gripper.cc"],
-    add_test_rule = 1,
+drake_cc_library(
+    name = "bubble_gripper_common",
+    srcs = ["bubble_gripper_common.cc"],
+    hdrs = ["bubble_gripper_common.h"],
     data = [
         ":bubble_gripper_models",
         "icosphere.obj"
     ],
-    test_rule_args = [
-        "--integration_scheme=runge_kutta2",
-        "--simulation_time=0.01",
-        "--target_realtime_rate=0.0",
-    ],
-    test_rule_timeout = "moderate",
+    visibility = ["//visibility:public"],
     deps = [
         "//common:find_resource",
-        "//common:text_logging_gflags",
         "//geometry:geometry_visualization",
         "//math:geometric_transform",
         "//multibody/parsing",
@@ -52,6 +46,23 @@ drake_cc_binary(
         "//systems/framework:diagram",
         "//systems/lcm:lcm_pubsub_system",
         "//systems/primitives:sine",
+    ],
+)
+drake_cc_binary(
+    name = "bubble_gripper",
+    srcs = ["bubble_gripper.cc"],
+    add_test_rule = 1,
+    test_rule_args = [
+        "--integration_scheme=runge_kutta2",
+        "--simulation_time=0.01",
+        "--target_realtime_rate=0.0",
+    ],
+    test_rule_timeout = "moderate",
+    deps = [
+        ":bubble_gripper_common",
+        "//common:find_resource",
+        "//common:text_logging_gflags",
+        "//geometry:geometry_visualization",
         "@gflags",
     ],
 )
@@ -67,6 +78,7 @@ drake_cc_binary(
         "--simulation_time=0.01",
         "--target_realtime_rate=0.0"],
     deps = [
+        ":bubble_gripper_common",
         "//common:find_resource",
         "//common:is_approx_equal_abstol",
         "//common:text_logging_gflags",

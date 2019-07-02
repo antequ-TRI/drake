@@ -1,14 +1,12 @@
 #include <memory>
 #include <string>
 
-#include <gflags/gflags.h>
 #include <fstream>
 #include <sstream>
 #include "fmt/ostream.h"
 
 #include "drake/common/drake_assert.h"
 #include "drake/common/find_resource.h"
-#include "drake/common/text_logging_gflags.h"
 #include "drake/geometry/geometry_visualization.h"
 #include "drake/geometry/scene_graph.h"
 #include "drake/lcm/drake_lcm.h"
@@ -19,15 +17,18 @@
 #include "drake/multibody/plant/contact_results_to_lcm.h"
 #include "drake/multibody/plant/multibody_plant.h"
 #include "drake/multibody/tree/prismatic_joint.h"
-#include "drake/systems/analysis/simulator.h"
 #include "drake/systems/framework/diagram_builder.h"
 #include "drake/systems/primitives/sine.h"
 #include "drake/examples/bubble_gripper/bubble_gripper_common.h"
+#include "drake/systems/analysis/implicit_euler_integrator.h"
+#include "drake/systems/analysis/runge_kutta2_integrator.h"
+#include "drake/systems/analysis/runge_kutta3_integrator.h"
+#include "drake/systems/analysis/semi_explicit_euler_integrator.h"
 
 namespace drake {
 namespace examples {
 namespace bubble_gripper {
-namespace {
+//namespace {
 
 using Eigen::Vector3d;
 using geometry::SceneGraph;
@@ -42,93 +43,13 @@ using multibody::MultibodyPlant;
 using multibody::Parser;
 using multibody::PrismaticJoint;
 using systems::Sine;
-
-// TODO(amcastro-tri): Consider moving this large set of parameters to a
-// configuration file (e.g. YAML).
-DEFINE_double(target_realtime_rate, 1.0,
-              "Desired rate relative to real time.  See documentation for "
-              "Simulator::set_target_realtime_rate() for details.");
-
-DEFINE_double(simulation_time, 10.0,
-              "Desired duration of the simulation. [s].");
-
-DEFINE_double(grip_width, 0.14,
-              "The initial distance between the gripper fingers. [m].");
-
-// Integration parameters:
-DEFINE_string(integration_scheme, "implicit_euler",
-              "Integration scheme to be used. Available options are: "
-              "'semi_explicit_euler','runge_kutta2','runge_kutta3',"
-              "'implicit_euler'");
-DEFINE_double(max_time_step, 1.0e-3,
-              "Maximum time step used for the integrators. [s]. "
-              "If negative, a value based on parameter penetration_allowance "
-              "is used.");
-DEFINE_double(accuracy, 1.0e-2, "Sets the simulation accuracy for variable step"
-              "size integrators with error control.");
-DEFINE_bool(time_stepping, true, "If 'true', the plant is modeled as a "
-    "discrete system with periodic updates of period 'max_time_step'."
-    "If 'false', the plant is modeled as a continuous system.");
-
-// Contact parameters
-DEFINE_double(penetration_allowance, 1.0e-2,
-              "Penetration allowance. [m]. "
-              "See MultibodyPlant::set_penetration_allowance().");
-DEFINE_double(v_stiction_tolerance, 1.0e-2,
-              "The maximum slipping speed allowed during stiction. [m/s]");
-
-// Pads parameters
-DEFINE_double(static_friction, 1.0, "The coefficient of static friction");
-
-// Parameters for rotating the mug.
-DEFINE_double(rx, 0, "The x-rotation of the mug around its origin - the center "
-              "of its bottom. [degrees]. Extrinsic rotation order: X, Y, Z");
-DEFINE_double(ry, 0, "The y-rotation of the mug around its origin - the center "
-              "of its bottom. [degrees]. Extrinsic rotation order: X, Y, Z");
-DEFINE_double(rz, 0, "The z-rotation of the mug around its origin - the center "
-              "of its bottom. [degrees]. Extrinsic rotation order: X, Y, Z");
+using systems::ImplicitEulerIntegrator;
+using systems::RungeKutta2Integrator;
+using systems::RungeKutta3Integrator;
+using systems::SemiExplicitEulerIntegrator;
 
 
-DEFINE_double(boxz, 0, "The z-coordinate of the box"); 
-/* use -0.08 with pads */
-/* use -0.12 otherwise */
 
-// Gripping force.
-DEFINE_double(gripper_force, 10, "The force to be applied by the gripper. [N]. "
-              "A value of 0 indicates a fixed grip width as set with option "
-              "grip_width.");
-
-// Parameters for shaking the mug.
-DEFINE_double(amplitude, 0, "The amplitude of the harmonic oscillations "
-              "carried out by the gripper. [m].");
-DEFINE_double(frequency, 2.0, "The frequency of the harmonic oscillations "
-              "carried out by the gripper. [Hz].");
-
-DEFINE_string(contact_model, "pads",
-              "Contact model. Options are: 'point', 'hydroelastic', 'pads'.");
-DEFINE_double(elastic_modulus, 5.0e4, "Desired Accuracy. ");
-DEFINE_double(dissipation, 5.0, "Desired Accuracy. ");
-// isosphere has vertices that are 0.14628121 units apart so 
-
-
-// default assumes that timescale is 0.5 s and box char length is 1-2 cm
-// must square costs. 
-DEFINE_double(state_box_rot_cost, 0.0004,"LQR cost for box rotation." );
-DEFINE_double(state_box_transl_cost, 1.0,"LQR cost for box translation." );
-
-DEFINE_double(state_grip_width_cost, 1.0, "LQR cost for gripper width." );
-DEFINE_double(state_z_transl_cost, 1.0, "LQR cost for z translation." );
-
-DEFINE_double(state_box_angvel_cost, 0.0016, "LQR cost for box ang velocity." );
-DEFINE_double(state_box_vel_cost, 4.0, "LQR cost for box translational velocity." );
-DEFINE_double(state_x_vel_cost, 4.0, "LQR cost for gripper width velocity." );
-DEFINE_double(state_z_vel_cost, 4.0, "LQR cost for z velocity." );
-
-
-DEFINE_double(input_z_force_cost, 16.0,"LQR cost for z gripper force." );
-DEFINE_double(input_x_force_cost, 16.0,"LQR cost for x gripper clench force." );
-
-#if 0
 // isosphere has vertices that are 0.14628121 units apart so 
 const double kSphereScaledRadius = 0.048760403;
 
@@ -166,7 +87,7 @@ std::vector<std::tuple<double, double, double>> read_obj_v(std::string filename)
 void AddGripperPads(MultibodyPlant<double>* plant,
                     const double bubble_radius, const double x_offset, const Body<double>& bubble,
                     const std::vector<std::tuple<double, double, double>>& vertices, bool incl_left,
-                    bool incl_right) {
+                    bool incl_right, const SimFlags& flags) {
   const int sample_count = vertices.size();
   
 
@@ -193,7 +114,7 @@ void AddGripperPads(MultibodyPlant<double>* plant,
       const RigidTransformd X_FS(p_FSo);
 
       CoulombFriction<double> friction(
-          FLAGS_static_friction, FLAGS_static_friction);
+          flags.FLAGS_static_friction, flags.FLAGS_static_friction);
 
       plant->RegisterCollisionGeometry(bubble, X_FS, Sphere(kSphereScaledRadius*bubble_radius),
                                       "collision" + bubble.name() + std::to_string(i), friction);
@@ -204,40 +125,40 @@ void AddGripperPads(MultibodyPlant<double>* plant,
                                     "visual" + bubble.name() + std::to_string(i), red);
     }
   }
-      plant->set_elastic_modulus(bubble, FLAGS_elastic_modulus);
-      plant->set_hydroelastics_dissipation(bubble, FLAGS_dissipation);
+      plant->set_elastic_modulus(bubble, flags.FLAGS_elastic_modulus);
+      plant->set_hydroelastics_dissipation(bubble, flags.FLAGS_dissipation);
 }
 
-void AddCollisionGeom(MultibodyPlant<double>* plant, const double bubble_radius, const Body<double>& bubble)
+void AddCollisionGeom(MultibodyPlant<double>* plant, const double bubble_radius,
+                      const Body<double>& bubble, const SimFlags& flags)
 {
   CoulombFriction<double> friction(
-          FLAGS_static_friction, FLAGS_static_friction);
+          flags.FLAGS_static_friction, flags.FLAGS_static_friction);
   plant->RegisterCollisionGeometry(bubble, RigidTransformd(), Sphere(bubble_radius),
                                       "collision" + bubble.name(), friction);
-  plant->set_elastic_modulus(bubble, FLAGS_elastic_modulus);
-  plant->set_hydroelastics_dissipation(bubble, FLAGS_dissipation);
+  plant->set_elastic_modulus(bubble, flags.FLAGS_elastic_modulus);
+  plant->set_hydroelastics_dissipation(bubble, flags.FLAGS_dissipation);
 
 }
 
-/* this is really bad drake style. but just know these are passed by reference! */
-std::unique_ptr<systems::Diagram<double>> make_diagram(DrakeLcm& lcm, MultibodyPlant<double>*& plant_ptr, double& v0, bool lqr) 
+void make_bubbles_mbp_setup(systems::DiagramBuilder<double>& builder, DrakeLcm& lcm, 
+        MultibodyPlant<double>*& plant_ptr, double& v0, bool lqr, const SimFlags& flags) 
 {
-    systems::DiagramBuilder<double> builder;
     SceneGraph<double>& scene_graph = *builder.AddSystem<SceneGraph>();
     scene_graph.set_name("scene_graph");
 
-    DRAKE_DEMAND(FLAGS_max_time_step > 0);
-    plant_ptr = FLAGS_time_stepping ?
-        builder.AddSystem<MultibodyPlant>(FLAGS_max_time_step) :
+    DRAKE_DEMAND(flags.FLAGS_max_time_step > 0);
+    plant_ptr = flags.FLAGS_time_stepping ?
+        builder.AddSystem<MultibodyPlant>(flags.FLAGS_max_time_step) :
         builder.AddSystem<MultibodyPlant>();
     MultibodyPlant<double>& plant = *plant_ptr;
 
-    if (FLAGS_contact_model == "hydroelastic" ) {
+    if (flags.FLAGS_contact_model == "hydroelastic" ) {
       plant.use_hydroelastic_model(true);    
-    } else if (FLAGS_contact_model == "point" || FLAGS_contact_model == "pads") {
+    } else if (flags.FLAGS_contact_model == "point" || flags.FLAGS_contact_model == "pads") {
         plant.use_hydroelastic_model(false);
     } else {
-      throw std::runtime_error("Invalid contact model: '" + FLAGS_contact_model +
+      throw std::runtime_error("Invalid contact model: '" + flags.FLAGS_contact_model +
                               "'.");
     }
     plant.RegisterAsSourceForSceneGraph(&scene_graph);
@@ -280,7 +201,7 @@ std::unique_ptr<systems::Diagram<double>> make_diagram(DrakeLcm& lcm, MultibodyP
     // the spheres is located right at the center of the finger.
     const double bubble_radius = 0.065+0.001; // this should be gripper radius + 0.0011
     
-    if (FLAGS_gripper_force == 0) 
+    if (flags.FLAGS_gripper_force == 0) 
     {
       throw std::runtime_error("Gripper force must be nonzero!");
       #ifdef POINT_CONTACT
@@ -298,18 +219,18 @@ std::unique_ptr<systems::Diagram<double>> make_diagram(DrakeLcm& lcm, MultibodyP
     }
     else 
     {
-      if(FLAGS_contact_model == "pads")
+      if(flags.FLAGS_contact_model == "pads")
       {
 
         AddGripperPads(&plant, bubble_radius - 0.001, 0.0 /*xoffset */, right_bubble, vert,
-                        true /* incl_left */, false /* incl_right */);
+                        true /* incl_left */, false /* incl_right */, flags);
         AddGripperPads(&plant, bubble_radius- 0.001, 0.0 /*xoffset */, left_bubble, vert,
-                        false /* incl_left */, true /* incl_right */);
+                        false /* incl_left */, true /* incl_right */, flags);
       }
       else
       {
-        AddCollisionGeom(&plant, bubble_radius, right_bubble);
-        AddCollisionGeom(&plant, bubble_radius, left_bubble);
+        AddCollisionGeom(&plant, bubble_radius, right_bubble, flags);
+        AddCollisionGeom(&plant, bubble_radius, left_bubble, flags);
         
       }
     }
@@ -319,8 +240,8 @@ std::unique_ptr<systems::Diagram<double>> make_diagram(DrakeLcm& lcm, MultibodyP
     plant.Finalize();
 
     // Set how much penetration (in meters) we are willing to accept.
-    plant.set_penetration_allowance(FLAGS_penetration_allowance);
-    plant.set_stiction_tolerance(FLAGS_v_stiction_tolerance);
+    plant.set_penetration_allowance(flags.FLAGS_penetration_allowance);
+    plant.set_stiction_tolerance(flags.FLAGS_v_stiction_tolerance);
 
     // from bubble_gripper.sdf, there are two actuators. One actuator on the
     // prismatic joint named "bubble_sliding_joint" to actuate the left finger and
@@ -343,7 +264,7 @@ std::unique_ptr<systems::Diagram<double>> make_diagram(DrakeLcm& lcm, MultibodyP
 
     // Publish contact results for visualization.
     // (Currently only available when time stepping.)
-    if (FLAGS_time_stepping)
+    if (flags.FLAGS_time_stepping)
       ConnectContactResultsToDrakeVisualizer(&builder, plant, &lcm);
 
     // Sinusoidal force input. We want the gripper to follow a trajectory of the
@@ -359,8 +280,8 @@ std::unique_ptr<systems::Diagram<double>> make_diagram(DrakeLcm& lcm, MultibodyP
     // TODO(amcastro-tri): we should call MultibodyPlant::CalcMass() here.
     // TODO ANTE: figure out how to set these forces based on new mass
     const double mass = 0.6;  // kg.
-    const double omega = 2 * M_PI * FLAGS_frequency;  // rad/s.
-    const double x0 = lqr ? 0.0 : FLAGS_amplitude ;  // meters.
+    const double omega = 2 * M_PI * flags.FLAGS_frequency;  // rad/s.
+    const double x0 = lqr ? 0.0 : flags.FLAGS_amplitude ;  // meters.
     v0 = -x0 * omega;  // Velocity amplitude, initial velocity, m/s.
     const double a0 = omega * omega * x0;  // Acceleration amplitude, m/s².
     const double f0 = mass * a0;  // Force amplitude, Newton.
@@ -373,7 +294,7 @@ std::unique_ptr<systems::Diagram<double>> make_diagram(DrakeLcm& lcm, MultibodyP
     //      angular frequency omega.
     //   2. Impose a constant force to the left finger. That is, a harmonic
     //      forcing with "zero" frequency.
-    const Vector2<double> amplitudes(f0, FLAGS_gripper_force);
+    const Vector2<double> amplitudes(f0, flags.FLAGS_gripper_force);
     const Vector2<double> frequencies(omega, 0.0);
     const Vector2<double> phases(0.0, M_PI_2);
     const auto& harmonic_force = *builder.AddSystem<Sine>(
@@ -381,10 +302,18 @@ std::unique_ptr<systems::Diagram<double>> make_diagram(DrakeLcm& lcm, MultibodyP
 
     builder.Connect(harmonic_force.get_output_port(0),
                     plant.get_actuation_input_port());
+}
+/* this is really bad drake style. but just know these are passed by reference! */
+std::unique_ptr<systems::Diagram<double>> BubbleGripperCommon::make_diagram(DrakeLcm& lcm, 
+        MultibodyPlant<double>*& plant_ptr, double& v0, bool lqr, const SimFlags& flags) 
+{
+    systems::DiagramBuilder<double> builder;
+    make_bubbles_mbp_setup(builder, lcm, plant_ptr, v0, lqr, flags);
     return builder.Build();
 }
 
-void init_context_poses(systems::Context<double>& plant_context, MultibodyPlant<double>& plant, double v0)
+void BubbleGripperCommon::init_context_poses(systems::Context<double>& plant_context,
+    MultibodyPlant<double>& plant, double v0, const SimFlags& flags)
 {
 
     // Get joints so that we can set initial conditions.
@@ -403,7 +332,7 @@ void init_context_poses(systems::Context<double>& plant_context, MultibodyPlant<
 
 
     // Set initial position of the left bubble.
-    bubble_slider.set_translation(&plant_context, -FLAGS_grip_width);
+    bubble_slider.set_translation(&plant_context, -flags.FLAGS_grip_width);
     // Initialize the box pose to be right in the middle between the bubble.
     const Vector3d& p_WBr = plant.EvalBodyPoseInWorld(
         plant_context, right_bubble).translation();
@@ -412,9 +341,9 @@ void init_context_poses(systems::Context<double>& plant_context, MultibodyPlant<
     const double box_x_W = (p_WBr(0) + p_WBl(0)) / 2.0;
 
     RigidTransformd X_WM(
-        RollPitchYawd(FLAGS_rx * M_PI / 180, FLAGS_ry * M_PI / 180,
-                      (FLAGS_rz * M_PI / 180) + M_PI),
-        Vector3d(box_x_W, 0.0 , FLAGS_boxz));
+        RollPitchYawd(flags.FLAGS_rx * M_PI / 180, flags.FLAGS_ry * M_PI / 180,
+                      (flags.FLAGS_rz * M_PI / 180) + M_PI),
+        Vector3d(box_x_W, 0.0 , flags.FLAGS_boxz));
     plant.SetFreeBodyPose(&plant_context, box, X_WM);
 
     // Set the initial height of the gripper and its initial velocity so that with
@@ -424,113 +353,121 @@ void init_context_poses(systems::Context<double>& plant_context, MultibodyPlant<
     translate_joint.set_translation_rate(&plant_context, v0);
 }
 
-#endif
+
+void BubbleGripperCommon::simulate_bubbles(systems::Simulator<double>& simulator, const MultibodyPlant<double>& plant,
+                      systems::Diagram<double>* diagram, const SimFlags& flags)
+{
 
 
-int do_main() {
-   // TODO Ante : split subroutine up!!
-  drake::VectorX<double> plant_state(17);
-  int in_port_index;
-   /* PHASE 1: RUN SIMULATOR TO FIXED POINT */
-  { 
-    SimFlags flags;
-    flags.FLAGS_static_friction = FLAGS_static_friction;
-    flags.FLAGS_elastic_modulus = FLAGS_elastic_modulus;
-    flags.FLAGS_dissipation = FLAGS_dissipation;
-		flags.FLAGS_time_stepping = FLAGS_time_stepping;
-		flags.FLAGS_max_time_step = FLAGS_max_time_step;
-		flags.FLAGS_contact_model = FLAGS_contact_model;
-		flags.FLAGS_gripper_force = FLAGS_gripper_force;
-		flags.FLAGS_penetration_allowance = FLAGS_penetration_allowance;
-		flags.FLAGS_v_stiction_tolerance = FLAGS_v_stiction_tolerance;
-		flags.FLAGS_frequency = FLAGS_frequency;
-		flags.FLAGS_amplitude = FLAGS_amplitude;
-		flags.FLAGS_grip_width = FLAGS_grip_width;
-		flags.FLAGS_rx = FLAGS_rx; 
-    flags.FLAGS_ry = FLAGS_ry; 
-    flags.FLAGS_rz = FLAGS_rz;
-		flags.FLAGS_boxz = FLAGS_boxz;
-    flags.FLAGS_integration_scheme = FLAGS_integration_scheme;
-    flags.FLAGS_accuracy = FLAGS_accuracy;
-    flags.FLAGS_target_realtime_rate = FLAGS_target_realtime_rate;
-    flags.FLAGS_simulation_time = FLAGS_simulation_time;
+    // If the user specifies a time step, we use that, otherwise estimate a
+    // maximum time step based on the compliance of the contact model.
+    // The maximum time step is estimated to resolve this time scale with at
+    // least 30 time steps. Usually this is a good starting point for fixed step
+    // size integrators to be stable.
+    const double max_time_step =
+        flags.FLAGS_max_time_step > 0 ? flags.FLAGS_max_time_step :
+        plant.get_contact_penalty_method_time_scale() / 30;
 
-    DrakeLcm lcm;
-    MultibodyPlant<double>* plant_ptr = nullptr;
-    double v0;
-    auto diagram = BubbleGripperCommon::make_diagram(lcm, plant_ptr, v0, true /* lqr */, flags);
-    MultibodyPlant<double>& plant = *plant_ptr;
-
-    // Create a context for this system:
-    std::unique_ptr<systems::Context<double>> diagram_context =
-        diagram->CreateDefaultContext();
-    diagram_context->EnableCaching();
-    diagram->SetDefaultContext(diagram_context.get());
-    systems::Context<double>& plant_context =
-        diagram->GetMutableSubsystemContext(plant, diagram_context.get());
-    BubbleGripperCommon::init_context_poses(plant_context, plant, v0, flags);
+    // Print maximum time step and the time scale introduced by the compliance in
+    // the contact model as a reference to the user.
+    fmt::print("Maximum time step = {:10.6f} s\n", max_time_step);
+    fmt::print("Compliance time scale = {:10.6f} s\n",
+              plant.get_contact_penalty_method_time_scale());
 
 
+    systems::IntegratorBase<double>* integrator{nullptr};
 
-    // Set up simulator.
-    systems::Simulator<double> simulator(*diagram, std::move(diagram_context));
+    if (flags.FLAGS_integration_scheme == "implicit_euler") {
+      integrator =
+          simulator.reset_integrator<ImplicitEulerIntegrator<double>>(
+              *diagram, &simulator.get_mutable_context());
+    } else if (flags.FLAGS_integration_scheme == "runge_kutta2") {
+      integrator =
+          simulator.reset_integrator<RungeKutta2Integrator<double>>(
+              *diagram, max_time_step, &simulator.get_mutable_context());
+    } else if (flags.FLAGS_integration_scheme == "runge_kutta3") {
+      integrator =
+          simulator.reset_integrator<RungeKutta3Integrator<double>>(
+              *diagram, &simulator.get_mutable_context());
+    } else if (flags.FLAGS_integration_scheme == "semi_explicit_euler") {
+      integrator =
+          simulator.reset_integrator<SemiExplicitEulerIntegrator<double>>(
+              *diagram, max_time_step, &simulator.get_mutable_context());
+    } else {
+      throw std::runtime_error(
+          "Integration scheme '" + flags.FLAGS_integration_scheme +
+              "' not supported for this example.");
+    }
+    integrator->set_maximum_step_size(max_time_step);
+    if (!integrator->get_fixed_step_mode())
+      integrator->set_target_accuracy(flags.FLAGS_accuracy);
 
-    BubbleGripperCommon::simulate_bubbles(simulator, plant, diagram.get(), flags );
-    BubbleGripperCommon::print_states(plant, plant_context, flags);
+    // The error controlled integrators might need to take very small time steps
+    // to compute a solution to the desired accuracy. Therefore, to visualize
+    // these very short transients, we publish every time step.
+    simulator.set_publish_every_time_step(true);
+    simulator.set_target_realtime_rate(flags.FLAGS_target_realtime_rate);
+    simulator.Initialize();
+    simulator.AdvanceTo(flags.FLAGS_simulation_time);
 
-    std::cout << "\nNumber of input ports: " << plant.num_input_ports() << std::endl;
-    std::cout << "\nActuation input port index: " << plant.get_actuation_input_port().get_index() << std::endl;
-    std::cout << "\nActuation input vector: \n" << plant.get_actuation_input_port().Eval(plant_context) << std::endl;
-    /* PHASE 2: get state vectors. Set Q and R matrices */
-    plant_state = plant.get_state_output_port().Eval(plant_context);
-    in_port_index = plant.get_actuation_input_port().get_index();
-  }
-  /* cost function for LQR state */
-  Eigen::MatrixXd Q(17,17);
-  Q = Eigen::MatrixXd::Identity(17,17);
-  Q(0,0)   = FLAGS_state_box_rot_cost;
-  Q(1,1)   = FLAGS_state_box_rot_cost;
-  Q(2,2)   = FLAGS_state_box_rot_cost;
-  Q(3,3)   = FLAGS_state_box_rot_cost;
-  Q(4,4)   = FLAGS_state_box_transl_cost;
-  Q(5,5)   = FLAGS_state_box_transl_cost;
-  Q(6,6)   = FLAGS_state_box_transl_cost;
-  Q(7,7)   = FLAGS_state_z_transl_cost;
-  Q(8,8)   = FLAGS_state_grip_width_cost;
-  Q(9,9)   = FLAGS_state_box_angvel_cost;
-  Q(10,10) = FLAGS_state_box_angvel_cost;
-  Q(11,11) = FLAGS_state_box_angvel_cost;
-  Q(12,12) = FLAGS_state_box_vel_cost;
-  Q(13,13) = FLAGS_state_box_vel_cost;
-  Q(14,14) = FLAGS_state_box_vel_cost;
-  Q(15,15) = FLAGS_state_z_vel_cost;
-  Q(16,16) = FLAGS_state_x_vel_cost;
-
-
-  /* cost function for LQR input force */
-  Eigen::MatrixXd R(2,2);
-  R << FLAGS_input_z_force_cost, 0, 0, FLAGS_input_x_force_cost;
-  unused(plant_state);
-  unused(in_port_index);
-  unused(R);
-  unused(Q);
-  // can't do this: auto* newplant = finalBuilder.AddSystem(std::move(&plant));
-  
-  return 0;
+    if (flags.FLAGS_time_stepping) {
+      fmt::print("Used time stepping with dt={}\n", flags.FLAGS_max_time_step);
+      fmt::print("Number of time steps taken = {:d}\n",
+                simulator.get_num_steps_taken());
+    }
+    else
+    {
+      fmt::print("Stats for integrator {}:\n", flags.FLAGS_integration_scheme);
+      fmt::print("Number of time steps taken = {:d}\n",
+                integrator->get_num_steps_taken());
+      if (!integrator->get_fixed_step_mode())
+      {
+        fmt::print("Initial time step taken = {:10.6g} s\n",
+                  integrator->get_actual_initial_step_size_taken());
+        fmt::print("Largest time step taken = {:10.6g} s\n",
+                  integrator->get_largest_step_size_taken());
+        fmt::print("Smallest adapted step size = {:10.6g} s\n",
+                  integrator->get_smallest_adapted_step_size_taken());
+        fmt::print("Number of steps shrunk due to error control = {:d}\n",
+                  integrator->get_num_step_shrinkages_from_error_control());
+      }
+    }
 }
 
-}  // namespace
+void BubbleGripperCommon::print_states(const MultibodyPlant<double>& plant, const systems::Context<double>& plant_context, const SimFlags& )
+{
+
+    // Get joints so that we can get poses.
+    const PrismaticJoint<double>& bubble_slider =
+        plant.GetJointByName<PrismaticJoint>("bubble_sliding_joint");
+    const PrismaticJoint<double>& translate_joint =
+        plant.GetJointByName<PrismaticJoint>("z_translate_joint");
+
+
+    // Get box body so that we can get poses.
+    const Body<double>& box = plant.GetBodyByName("wooden_box");
+    std::cout << "\nBox Rotation: \n" << box.EvalPoseInWorld(plant_context).rotation().ToQuaternionAsVector4() << std::endl;
+    std::cout << "\nBox Translation: \n" << box.EvalPoseInWorld(plant_context).translation() << " m" << std::endl;
+    std::cout << "\nZ Translation: \n" << translate_joint.get_translation(plant_context) << " m" << std::endl;
+    std::cout << "\nGripper Width: \n" << bubble_slider.get_translation(plant_context) << " m" << std::endl;
+    
+    
+    std::cout << "\nPosition states: " << std::endl<< plant.GetPositions(plant_context) << std::endl;
+    
+    
+    std::cout << "\nBox Ang Vel: \n" << box.EvalSpatialVelocityInWorld(plant_context).rotational() << " Hz" << std::endl;
+    std::cout << "\nBox Velocity: \n" << box.EvalSpatialVelocityInWorld(plant_context).translational() << " m/s" << std::endl;
+    std::cout << "\nZ Velocity: \n" << translate_joint.get_translation_rate(plant_context) << " m/s" << std::endl;
+    std::cout << "\nGripper Width Velocity: \n" << bubble_slider.get_translation_rate(plant_context) << " m/s" << std::endl;
+    
+    
+    std::cout << "\nVelocity states: " << std::endl<< plant.GetVelocities(plant_context) << std::endl;
+    
+    std::cout << "\nState vector: \n" <<  plant.GetPositionsAndVelocities(plant_context) << std::endl;
+    
+}
+
+//}  // namespace
 }  // namespace bubble_gripper
 }  // namespace examples
 }  // namespace drake
-
-int main(int argc, char* argv[]) {
-  gflags::SetUsageMessage(
-      "Demo used to exercise MultibodyPlant's contact modeling in a gripping "
-      "scenario. SceneGraph is used for both visualization and contact "
-      "handling. "
-      "Launch drake-visualizer before running this example.");
-  gflags::ParseCommandLineFlags(&argc, &argv, true);
-  drake::logging::HandleSpdlogGflags();
-  return drake::examples::bubble_gripper::do_main();
-}

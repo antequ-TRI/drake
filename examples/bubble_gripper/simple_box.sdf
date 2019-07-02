@@ -2,7 +2,7 @@
 <sdf version='1.6'>
   <model name='simple_box'>
     <link name='wooden_box'>
-      <pose frame=''>0 0 0 0 -0 0</pose>
+      <pose frame=''>0 0 0 0 0 0</pose>
       <inertial>
         <mass>1.35</mass>
         <inertia>
@@ -15,7 +15,7 @@
         </inertia>
       </inertial>
       <collision name='wooden_box_collision'>
-        <pose frame=''>0 0 0.0 0 -0 0</pose>
+        <pose frame=''>0 0 0.0 0 -0 0</pose> <!-- -0.78539816 for diagonal -->
         <geometry>
          <!-- <cylinder>
             <radius>0.0625</radius>
@@ -37,7 +37,7 @@
       </collision>
 
       <visual name='wooden_box_visual'>
-        <pose frame=''>0 0 0.0 0 -0 0</pose>
+        <pose frame=''>0 0 0.0 0 -0. 0</pose> <!-- -0.78539816 for diagonal -->
         <geometry>
          <!-- <cylinder>
             <radius>0.0625</radius>
