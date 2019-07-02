@@ -67,8 +67,11 @@
       <child>Cart</child>
       <axis>
         <xyz>1.0 0.0 0.0</xyz>
+        <limit>
+          <!-- The pole pin joint is not actuated. -->
+          <effort>1.0</effort>
+        </limit>
       </axis>
-
     </joint>
 
     <joint name='PolePin' type='revolute'>
@@ -81,7 +84,7 @@
         <xyz>0.0 -1.0 0.0</xyz>
         <limit>
           <!-- The pole pin joint is not actuated. -->
-          <effort>0</effort>
+          <effort>1.0</effort>
         </limit>
       </axis>
     </joint>
