@@ -172,8 +172,7 @@ void BubbleGripperCommon::make_bubbles_mbp_setup(systems::DiagramBuilder<double>
         FindResourceOrThrow("drake/examples/bubble_gripper/simple_box.sdf");
     parser.AddModelFromFile(full_name);
 
-    std::string icospherename = FindResourceOrThrow("drake/examples/bubble_gripper/icosphere.obj");
-    auto vert = drake::examples::bubble_gripper::read_obj_v(icospherename);
+    
     // Obtain the "translate_joint" axis so that we know the direction of the
     // forced motions. We do not apply gravity if motions are forced in the
     // vertical direction so that the gripper doesn't start free falling. See note
@@ -222,7 +221,8 @@ void BubbleGripperCommon::make_bubbles_mbp_setup(systems::DiagramBuilder<double>
     {
       if(flags.FLAGS_contact_model == "pads")
       {
-
+        std::string icospherename = FindResourceOrThrow("drake/examples/bubble_gripper/icosphere.obj");
+        auto vert = drake::examples::bubble_gripper::read_obj_v(icospherename);
         AddGripperPads(&plant, bubble_radius - 0.001, 0.0 /*xoffset */, right_bubble, vert,
                         true /* incl_left */, false /* incl_right */, flags);
         AddGripperPads(&plant, bubble_radius- 0.001, 0.0 /*xoffset */, left_bubble, vert,

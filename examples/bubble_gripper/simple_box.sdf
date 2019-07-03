@@ -15,12 +15,8 @@
         </inertia>
       </inertial>
       <collision name='wooden_box_collision'>
-        <pose frame=''>0 0 0.0 0 -0 0</pose> <!-- -0.78539816 for diagonal -->
+        <pose frame=''>0 0 0.0 0 -0 0</pose> 
         <geometry>
-         <!-- <cylinder>
-            <radius>0.0625</radius>
-            <length>0.125</length>
-          </cylinder> -->
           <box>
             <size>0.125 0.125 0.125</size>
           </box>
