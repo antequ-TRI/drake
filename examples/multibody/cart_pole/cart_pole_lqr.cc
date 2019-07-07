@@ -25,11 +25,12 @@
 
 DEFINE_double(target_realtime_rate, 1.0,
               "Rate at which to run the simulation, relative to realtime");
-DEFINE_double(simulation_time, 10, "How long to simulate the pendulum");
+DEFINE_double(simulation_time, 3., "How long to simulate the pendulum");
 DEFINE_double(max_time_step, 1.0e-3,
               "Simulation time step used for integrator.");
 
-DEFINE_bool(enable_controller, true, "Use 'true' to enable the LQR.");
+DEFINE_bool(enable_controller, false, "Use 'true' to enable the initial LQR.");
+DEFINE_bool(enable_post_controller, true, "Use 'true' to enable the post subdiagram LQR.");
 
 namespace drake {
 namespace examples {
@@ -135,6 +136,69 @@ void DoMain() {
   simulator.set_target_realtime_rate(FLAGS_target_realtime_rate);
   simulator.Initialize();
   simulator.AdvanceTo(FLAGS_simulation_time);
+
+  if( FLAGS_enable_post_controller )
+  {
+    systems::DiagramBuilder<double> newbuilder;
+
+    systems::Context<double>& newcp_context = diagram->GetMutableSubsystemContext(*cp, &simulator.get_mutable_context());
+    u0 = cp->get_actuation_input_port().Eval(newcp_context);
+    newcp_context.FixInputPort(CartPole_actuation_port, u0);
+    auto lqr = newbuilder.AddSystem(systems::controllers::LinearQuadraticRegulator(
+        *cp, newcp_context, Q, R, N, CartPole_actuation_port));
+
+        
+    geometry::SceneGraph<double>& newscene_graph =
+        *newbuilder.AddSystem<geometry::SceneGraph>();
+    newscene_graph.set_name("scene_graph");
+
+    // Load and parse double pendulum SDF from file into a tree.
+    drake::multibody::MultibodyPlant<double>* newcp =
+        newbuilder.AddSystem<drake::multibody::MultibodyPlant<double>>(
+            FLAGS_max_time_step);
+    newcp->set_name("cart_pole");
+    newcp->RegisterAsSourceForSceneGraph(&newscene_graph);
+
+    drake::multibody::Parser newparser(newcp);
+    newparser.AddModelFromFile(sdf_path);
+
+    // Now the plant is complete.
+    newcp->Finalize();
+    // Connect plant with scene_graph to get collision information.
+    DRAKE_DEMAND(!!newcp->get_source_id());
+    newbuilder.Connect(
+        newcp->get_geometry_poses_output_port(),
+        newscene_graph.get_source_pose_port(newcp->get_source_id().value()));
+    newbuilder.Connect(newscene_graph.get_query_output_port(),
+                    newcp->get_geometry_query_input_port());
+
+    geometry::ConnectDrakeVisualizer(&newbuilder, newscene_graph);
+
+
+    newbuilder.Connect(newcp->get_state_output_port(), lqr->get_input_port());
+    newbuilder.Connect(lqr->get_output_port(), newcp->get_actuation_input_port());
+    auto newdiagram = newbuilder.Build();
+    std::unique_ptr<systems::Context<double>> newdiagram_context =
+        newdiagram->CreateDefaultContext();
+
+    // Create plant_context to set velocity.
+    systems::Context<double>& newplant_context =
+        newdiagram->GetMutableSubsystemContext(*newcp, newdiagram_context.get());
+    // Set init position.
+    Eigen::VectorXd newpositions = Eigen::VectorXd::Zero(2);
+    newpositions[0] = 0.0;
+    newpositions[1] = M_PI_2;
+    newcp->SetPositions(&newplant_context, newpositions);
+
+    systems::Simulator<double> newsimulator(*newdiagram, std::move(newdiagram_context));
+    newsimulator.set_publish_every_time_step(true);
+    newsimulator.set_target_realtime_rate(FLAGS_target_realtime_rate);
+    newsimulator.Initialize();
+    newsimulator.AdvanceTo(FLAGS_simulation_time);
+
+  }
+
+  
 }
 
 }  // namespace

@@ -73,7 +73,7 @@ template <typename T>
 class QueryObject {
  public:
   /** Constructs a default QueryObject (all pointers are null). */
-  QueryObject() = default;
+  QueryObject() {}
 
   /** @name Implements CopyConstructible, CopyAssignable, MoveConstructible, MoveAssignable
 
@@ -82,8 +82,14 @@ class QueryObject {
    QueryObjects is cheap.  */
   //@{
 
-  QueryObject(const QueryObject& other);
+  explicit QueryObject(const QueryObject& other);
+
   QueryObject& operator=(const QueryObject&);
+  template <typename U>
+  explicit QueryObject(const QueryObject<U>& other);
+  template <typename U>
+  QueryObject& operator=(const QueryObject<U>&);
+
   QueryObject(QueryObject&&) = default;
   QueryObject& operator=(QueryObject&&) = default;
 
@@ -422,6 +428,8 @@ class QueryObject {
   friend class SceneGraph<T>;
   // Convenience class for testing.
   friend class QueryObjectTester;
+  template <typename>
+  friend class QueryObject;
 
   // Access the GeometryState associated with this QueryObject.
   // @pre ThrowIfNotCallable() has been invoked prior to this.
@@ -499,11 +507,11 @@ class QueryObject {
   const systems::Context<T>* context_{nullptr};
   const SceneGraph<T>* scene_graph_{nullptr};
 
-  SceneGraphInspector<T> inspector_;
+  SceneGraphInspector<T> inspector_ {};
 
   // When a QueryObject is copied to a "baked" version, it contains a fully
   // updated GeometryState. Copies of bakes all share the same version.
-  std::shared_ptr<const GeometryState<T>> state_{};
+  std::shared_ptr<const GeometryState<T>> state_{nullptr};
 };
 
 }  // namespace geometry

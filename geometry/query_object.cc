@@ -15,13 +15,14 @@ using systems::sensors::ImageDepth32F;
 using systems::sensors::ImageLabel16I;
 using systems::sensors::ImageRgba8U;
 
+
 template <typename T>
 QueryObject<T>::QueryObject(const QueryObject& query_object) {
   *this = query_object;
 }
 
 template <typename T>
-QueryObject<T>& QueryObject<T>::operator=(const QueryObject<T>& query_object) {
+QueryObject<T>& QueryObject<T>::operator=(const QueryObject& query_object) {
   if (this == &query_object) return *this;
 
   DRAKE_DEMAND(query_object.is_copyable());
@@ -37,6 +38,37 @@ QueryObject<T>& QueryObject<T>::operator=(const QueryObject<T>& query_object) {
     // Create a new baked state; make sure the source is fully updated.
     query_object.FullPoseUpdate();
     state_ = std::make_shared<GeometryState<T>>(query_object.geometry_state());
+  }
+  inspector_.set(state_.get());
+  // If `query_object` is default, then this will likewise be default.
+
+  return *this;
+}
+
+template <typename T>
+template <typename U>
+QueryObject<T>::QueryObject(const QueryObject<U>& query_object) {
+  *this = query_object;
+}
+
+template <typename T>
+template <typename U>
+QueryObject<T>& QueryObject<T>::operator=(const QueryObject<U>& query_object) {
+  if (this == &query_object) return *this;
+  DRAKE_DEMAND(query_object.is_copyable());
+  // make baked object first
+  QueryObject<U> new_query_object = query_object;
+
+  context_ = nullptr;
+  scene_graph_ = nullptr;
+  state_.reset();
+
+  if (new_query_object.state_) {
+    // Convert the underlying baked state
+    state_ = std::shared_ptr<const GeometryState<T>>(
+      new GeometryState<T>(*new_query_object.state_)); 
+  } else {
+    DRAKE_UNREACHABLE();
   }
   inspector_.set(state_.get());
   // If `query_object` is default, then this will likewise be default.

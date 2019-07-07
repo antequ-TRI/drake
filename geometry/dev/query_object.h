@@ -9,6 +9,7 @@
 #include "drake/geometry/query_results/penetration_as_point_pair.h"
 #include "drake/geometry/query_results/signed_distance_pair.h"
 
+#define ANTE_HACK_COPY
 namespace drake {
 namespace geometry {
 namespace dev {
@@ -65,8 +66,19 @@ class QueryObject {
   // The result will always be a "default" QueryObject (i.e., all pointers are
   // null). The SceneGraph is responsible for guaranteeing the returned
   // QueryObject is "live" (via CalcQueryObject()).
+#ifdef ANTE_HACK_COPY
+  template <typename U>
+  explicit QueryObject(const QueryObject<U>& other);
+
+
+  template <typename U>
+  QueryObject& operator=(const QueryObject<U>& other);
+
+#else
   QueryObject(const QueryObject& other);
   QueryObject& operator=(const QueryObject&);
+
+#endif
   // NOTE: The move semantics are implicitly deleted by the copy semantics.
   // There is no sense in "moving" a query object.
 #endif  // DRAKE_DOXYGEN_CXX

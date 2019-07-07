@@ -14,6 +14,7 @@ using systems::sensors::ImageDepth32F;
 using systems::sensors::ImageLabel16I;
 using systems::sensors::ImageRgba8U;
 
+#ifndef ANTE_HACK_COPY
 template <typename T>
 QueryObject<T>::QueryObject(const QueryObject&)
     : context_{nullptr}, scene_graph_{nullptr} {}
@@ -24,6 +25,24 @@ QueryObject<T>& QueryObject<T>::operator=(const QueryObject<T>&) {
   scene_graph_ = nullptr;
   return *this;
 }
+
+#else
+/* Ante's hack - enabling copy construction for query objects */
+
+template <typename T>
+template <typename U>
+QueryObject<T>::QueryObject(const QueryObject<U>&) :context_{nullptr}, scene_graph_{nullptr}{}
+
+template <typename T>
+template <typename U>
+QueryObject<T>& QueryObject<T>::operator=(const QueryObject<U>&) 
+{
+  context_ = nullptr;
+  scene_graph_ = nullptr;
+  return *this;
+}
+
+#endif
 
 template <typename T>
 const Isometry3<T>& QueryObject<T>::GetPoseInWorld(FrameId frame_id) const {
