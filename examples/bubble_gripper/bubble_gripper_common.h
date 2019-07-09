@@ -25,7 +25,7 @@ namespace bubble_gripper {
 		double FLAGS_amplitude;
 		double FLAGS_grip_width;
 		double FLAGS_rx, FLAGS_ry, FLAGS_rz;
-		double FLAGS_boxz;
+		double FLAGS_boxy, FLAGS_boxz;
 		std::string FLAGS_integration_scheme;
 		double FLAGS_accuracy;
 		double FLAGS_target_realtime_rate;

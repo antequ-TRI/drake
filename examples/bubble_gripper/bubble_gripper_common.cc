@@ -482,7 +482,7 @@ void BubbleGripperCommon::init_context_poses(systems::Context<double>& plant_con
     RigidTransformd X_WM(
         RollPitchYawd(flags.FLAGS_rx * M_PI / 180, flags.FLAGS_ry * M_PI / 180,
                       (flags.FLAGS_rz * M_PI / 180) + M_PI),
-        Vector3d(box_x_W, 0.0 , flags.FLAGS_boxz));
+        Vector3d(box_x_W, flags.FLAGS_boxy , flags.FLAGS_boxz));
     plant.SetFreeBodyPose(&plant_context, box, X_WM);
 
     // Set the initial height of the gripper and its initial velocity so that with

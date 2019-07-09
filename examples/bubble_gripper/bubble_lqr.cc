@@ -89,8 +89,9 @@ DEFINE_double(ry, 0, "The y-rotation of the mug around its origin - the center "
 DEFINE_double(rz, 0, "The z-rotation of the mug around its origin - the center "
               "of its bottom. [degrees]. Extrinsic rotation order: X, Y, Z");
 
-
+DEFINE_double(fixed_boxy, 0.0, "The y-coordinate of the box when finding the fixed point"); 
 DEFINE_double(fixed_boxz, 0, "The z-coordinate of the box when finding the fixed point"); 
+DEFINE_double(boxy, 0.0, "The y-coordinate of the box"); 
 DEFINE_double(boxz, 0, "The z-coordinate of the box in simulation"); 
 /* use -0.08 with pads */
 /* use -0.12 otherwise */
@@ -456,6 +457,7 @@ int do_main() {
 		flags.FLAGS_rx = FLAGS_rx; 
     flags.FLAGS_ry = FLAGS_ry; 
     flags.FLAGS_rz = FLAGS_rz;
+    flags.FLAGS_boxy = FLAGS_fixed_boxy;
 		flags.FLAGS_boxz = FLAGS_fixed_boxz;
     flags.FLAGS_integration_scheme = FLAGS_integration_scheme;
     flags.FLAGS_accuracy = FLAGS_accuracy;
@@ -528,6 +530,7 @@ int do_main() {
   DrakeLcm lcm;
   MultibodyPlant<double>* plant_ptr = nullptr;
   double v0;
+  flags.FLAGS_boxy = FLAGS_boxy;
   flags.FLAGS_boxz = FLAGS_boxz;
   {
    
