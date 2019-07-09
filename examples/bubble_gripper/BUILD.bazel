@@ -38,6 +38,7 @@ drake_cc_library(
         "//multibody/parsing",
         "//multibody/plant",
         "//multibody/plant:contact_results_to_lcm",
+        "//multibody/plant:externally_applied_spatial_force",
         "//systems/analysis:implicit_euler_integrator",
         "//systems/analysis:runge_kutta2_integrator",
         "//systems/analysis:runge_kutta3_integrator",
@@ -45,8 +46,10 @@ drake_cc_library(
         "//systems/analysis:simulator",
         "//systems/controllers:linear_quadratic_regulator",
         "//systems/framework:diagram",
+        "//systems/framework:leaf_system",
         "//systems/lcm:lcm_pubsub_system",
         "//systems/primitives:sine",
+        "//systems/primitives:affine_system",
     ],
 )
 drake_cc_binary(
@@ -68,12 +71,31 @@ drake_cc_binary(
     ],
 )
 
+
+drake_cc_binary(
+    name = "bubble_external",
+    srcs = ["bubble_external.cc"],
+    add_test_rule = 1,
+    test_rule_args = [
+        "--integration_scheme=runge_kutta2",
+        "--simulation_time=0.01",
+        "--target_realtime_rate=0.0",
+    ],
+    test_rule_timeout = "moderate",
+    deps = [
+        ":bubble_gripper_common",
+        "//common:find_resource",
+        "//common:text_logging_gflags",
+        "//geometry:geometry_visualization",
+        "@gflags",
+    ],
+)
+
+
 drake_cc_binary(
     name = "bubble_lqr",
     srcs = ["bubble_lqr.cc"],
     add_test_rule = 1,
-    data = [":bubble_gripper_models",
-        "icosphere.obj"],
     test_rule_args = [
         "--integration_scheme=runge_kutta2",
         "--simulation_time=0.01",

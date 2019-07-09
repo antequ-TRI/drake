@@ -32,6 +32,30 @@ namespace bubble_gripper {
 		double FLAGS_simulation_time;
 	};
 
+	struct ExtForceFlags
+	{
+		bool   FLAGS_repeat_force;
+		double FLAGS_ext_force_start_time;
+		double FLAGS_ext_force_stop_time;
+		double FLAGS_ext_force_wx;
+		double FLAGS_ext_force_wy;
+		double FLAGS_ext_force_wz;
+		double FLAGS_ext_force_x;
+		double FLAGS_ext_force_y;
+		double FLAGS_ext_force_z;
+	};
+
+	struct PDControllerParams
+	{
+		double FLAGS_pd_kbz;
+		double FLAGS_pd_kgz;
+		double FLAGS_pd_kgw;
+		double FLAGS_pd_kbz_dot;
+		double FLAGS_pd_kgz_dot;
+		double FLAGS_pd_kgw_dot;
+		Eigen::VectorXd desired_x{ 17 };
+	};
+
     class BubbleGripperCommon final 
 	{
 		public:
@@ -43,9 +67,12 @@ namespace bubble_gripper {
 			double v0;
 			bool lqr;
 			SimFlags flags;
+			ExtForceFlags eflags;
+			PDControllerParams params;
 			auto diagram = make_diagram(lcm, plantp, v0, lqr, flags);
 			systems::Context<double>* context;
 			init_context_poses(*context, *plantp, v0, flags);
+			auto diagram2 = make_diagram_wextforces(lcm, plantp, v0, flags, eflags, false, params);
 		}
 		DRAKE_NO_COPY_NO_MOVE_NO_ASSIGN(BubbleGripperCommon);
 		/* this is really bad drake style. but just know these are passed by reference! */
@@ -53,7 +80,11 @@ namespace bubble_gripper {
 	                                    MultibodyPlant<double>*& plant_ptr, double& v0, bool lqr_fixed, const SimFlags& flags);
 
 		static void make_bubbles_mbp_setup(systems::DiagramBuilder<double>& builder, DrakeLcm& lcm, 
-        								MultibodyPlant<double>*& plant_ptr, double& v0, bool lqr_fixed, const SimFlags& flags);
+        								MultibodyPlant<double>*& plant_ptr, double& v0, bool lqr_fixed, bool actuation_source, const SimFlags& flags);
+	    
+		static std::unique_ptr<systems::Diagram<double>> make_diagram_wextforces(DrakeLcm& lcm, 
+        								MultibodyPlant<double>*& plant_ptr, double& v0, const SimFlags& flags, 
+										const ExtForceFlags& force_flags, bool use_controller, const PDControllerParams& c_params );
 		static void init_context_poses(systems::Context<double>& plant_context, 
 	                                    MultibodyPlant<double>& plant, double v0, const SimFlags& flags);
 		static void simulate_bubbles(systems::Simulator<double>& simulator, const MultibodyPlant<double>& plant,

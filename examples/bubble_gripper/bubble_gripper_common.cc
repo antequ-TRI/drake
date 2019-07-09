@@ -15,15 +15,21 @@
 #include "drake/multibody/parsing/parser.h"
 #include "drake/multibody/plant/contact_results.h"
 #include "drake/multibody/plant/contact_results_to_lcm.h"
+#include "drake/multibody/plant/externally_applied_spatial_force.h"
 #include "drake/multibody/plant/multibody_plant.h"
 #include "drake/multibody/tree/prismatic_joint.h"
 #include "drake/systems/framework/diagram_builder.h"
+#include "drake/systems/framework/leaf_system.h"
 #include "drake/systems/primitives/sine.h"
 #include "drake/examples/bubble_gripper/bubble_gripper_common.h"
 #include "drake/systems/analysis/implicit_euler_integrator.h"
 #include "drake/systems/analysis/runge_kutta2_integrator.h"
 #include "drake/systems/analysis/runge_kutta3_integrator.h"
 #include "drake/systems/analysis/semi_explicit_euler_integrator.h"
+#include "drake/systems/primitives/affine_system.h"
+
+
+
 
 namespace drake {
 namespace examples {
@@ -49,6 +55,81 @@ using systems::RungeKutta3Integrator;
 using systems::SemiExplicitEulerIntegrator;
 
 
+
+class BoxExternalForceGenerator : public systems::LeafSystem<double> {
+ public:
+  explicit BoxExternalForceGenerator(const MultibodyPlant<double>* plant, const ExtForceFlags& force_flags)
+      : plant_(plant), force_flags_(force_flags) {
+    this->DeclareAbstractOutputPort(
+        "spatial_forces",
+        &BoxExternalForceGenerator::CalcSpatialForce);
+  }
+
+ private:
+  bool IsForceActive(const systems::Context<double>& context) const
+  {
+    double time = context.get_time();
+    if( time < force_flags_.FLAGS_ext_force_start_time )
+    {
+      // too early
+      return false;
+    }
+    else if( time < force_flags_.FLAGS_ext_force_stop_time)
+    {
+      // apply force
+      return true;
+    }
+    else if (force_flags_.FLAGS_repeat_force )
+    {
+      // repeatedly loop after stop time
+      double stop_time = force_flags_.FLAGS_ext_force_stop_time;
+      double remainder = time - std::floor(time / stop_time) * stop_time;
+      if( remainder >= force_flags_.FLAGS_ext_force_start_time )
+      {
+        return true;
+      }
+      else
+      {
+        return false;
+      }
+    }
+    else
+    {
+      return false;
+    }
+    DRAKE_UNREACHABLE();
+    return false;
+  }
+  void CalcSpatialForce(
+      const systems::Context<double>& context,
+      std::vector<multibody::ExternallyAppliedSpatialForce<double>>* output) const {
+
+    if( IsForceActive(context) )
+    {
+      Eigen::Vector3d torque {force_flags_.FLAGS_ext_force_wx,
+                              force_flags_.FLAGS_ext_force_wy,
+                              force_flags_.FLAGS_ext_force_wz};
+      Eigen::Vector3d force  {force_flags_.FLAGS_ext_force_x,
+                              force_flags_.FLAGS_ext_force_y,
+                              force_flags_.FLAGS_ext_force_z};
+      multibody::BodyIndex ind = plant_->GetBodyByName("wooden_box").index();
+
+      const multibody::SpatialForce<double> F(torque, force);
+      output->resize(1 /* number of forces */);
+      (*output)[0].body_index = ind;
+      (*output)[0].p_BoBq_B = Eigen::Vector3d::Zero();
+      (*output)[0].F_Bq_W = F;
+    }
+    else
+    {
+      output->resize(0 /* number of forces */);
+    }
+    
+  }
+
+  const MultibodyPlant<double>* plant_{nullptr};
+  ExtForceFlags force_flags_;
+};
 
 // isosphere has vertices that are 0.14628121 units apart so 
 const double kSphereScaledRadius = 0.048760403;
@@ -141,8 +222,10 @@ void AddCollisionGeom(MultibodyPlant<double>* plant, const double bubble_radius,
 
 }
 
+/* lqr_fixed says whether to use 0 for forces */
+/* setting actuation_source to false leaves the actuation port unconnected */
 void BubbleGripperCommon::make_bubbles_mbp_setup(systems::DiagramBuilder<double>& builder, DrakeLcm& lcm, 
-        MultibodyPlant<double>*& plant_ptr, double& v0, bool lqr_fixed, const SimFlags& flags)
+        MultibodyPlant<double>*& plant_ptr, double& v0, bool lqr_fixed, bool actuation_source, const SimFlags& flags)
         //SceneGraph<double>*& scene_graph_ptr, ) 
 {
     SceneGraph<double>& scene_graph = *builder.AddSystem<SceneGraph>();
@@ -266,50 +349,105 @@ void BubbleGripperCommon::make_bubbles_mbp_setup(systems::DiagramBuilder<double>
     if (flags.FLAGS_time_stepping)
       ConnectContactResultsToDrakeVisualizer(&builder, plant, &lcm);
 
-    // Sinusoidal force input. We want the gripper to follow a trajectory of the
-    // form x(t) = X0 * sin(ω⋅t). By differentiating once, we can compute the
-    // velocity initial condition, and by differentiating twice, we get the input
-    // force we need to apply.
-    // The mass of the mug is ignored.
-    // TODO(amcastro-tri): add a PD controller to precisely control the
-    // trajectory of the gripper. Even better, add a motion constraint when MBP
-    // supports it.
+    if(actuation_source)
+    {
+      // Sinusoidal force input. We want the gripper to follow a trajectory of the
+      // form x(t) = X0 * sin(ω⋅t). By differentiating once, we can compute the
+      // velocity initial condition, and by differentiating twice, we get the input
+      // force we need to apply.
+      // The mass of the mug is ignored.
+      // TODO(amcastro-tri): add a PD controller to precisely control the
+      // trajectory of the gripper. Even better, add a motion constraint when MBP
+      // supports it.
 
-    // The mass of the gripper in simple_gripper.sdf.
-    // TODO(amcastro-tri): we should call MultibodyPlant::CalcMass() here.
-    // TODO ANTE: figure out how to set these forces based on new mass
-    const double mass = 0.6;  // kg.
-    const double omega = 2 * M_PI * flags.FLAGS_frequency;  // rad/s.
-    const double x0 = lqr_fixed ? 0.0 : flags.FLAGS_amplitude ;  // meters.
-    v0 = -x0 * omega;  // Velocity amplitude, initial velocity, m/s.
-    const double a0 = omega * omega * x0;  // Acceleration amplitude, m/s².
-    const double f0 = mass * a0;  // Force amplitude, Newton.
-    fmt::print("Acceleration amplitude = {:8.4f} m/s²\n", a0);
+      // The mass of the gripper in simple_gripper.sdf.
+      // TODO(amcastro-tri): we should call MultibodyPlant::CalcMass() here.
+      // TODO ANTE: figure out how to set these forces based on new mass
+      const double mass = 0.6;  // kg.
+      const double omega = 2 * M_PI * flags.FLAGS_frequency;  // rad/s.
+      const double x0 = lqr_fixed ? 0.0 : flags.FLAGS_amplitude ;  // meters.
+      v0 = -x0 * omega;  // Velocity amplitude, initial velocity, m/s.
+      const double a0 = omega * omega * x0;  // Acceleration amplitude, m/s².
+      const double f0 = mass * a0;  // Force amplitude, Newton.
+      fmt::print("Acceleration amplitude = {:8.4f} m/s²\n", a0);
 
-    // START WITH a0 = 0 for fixed point simulation.
+      // START WITH a0 = 0 for fixed point simulation.
 
-    // Notice we are using the same Sine source to:
-    //   1. Generate a harmonic forcing of the gripper with amplitude f0 and
-    //      angular frequency omega.
-    //   2. Impose a constant force to the left finger. That is, a harmonic
-    //      forcing with "zero" frequency.
-    const Vector2<double> amplitudes(f0, flags.FLAGS_gripper_force);
-    const Vector2<double> frequencies(omega, 0.0);
-    const Vector2<double> phases(0.0, M_PI_2);
-    const auto& harmonic_force = *builder.AddSystem<Sine>(
-        amplitudes, frequencies, phases);
+      // Notice we are using the same Sine source to:
+      //   1. Generate a harmonic forcing of the gripper with amplitude f0 and
+      //      angular frequency omega.
+      //   2. Impose a constant force to the left finger. That is, a harmonic
+      //      forcing with "zero" frequency.
+      const Vector2<double> amplitudes(f0, flags.FLAGS_gripper_force);
+      const Vector2<double> frequencies(omega, 0.0);
+      const Vector2<double> phases(0.0, M_PI_2);
+      const auto& harmonic_force = *builder.AddSystem<Sine>(
+          amplitudes, frequencies, phases);
 
+      builder.Connect(harmonic_force.get_output_port(0),
+                      plant.get_actuation_input_port());
+    }
     builder.Connect(scene_graph.get_query_output_port(),
                     plant.get_geometry_query_input_port());
-    builder.Connect(harmonic_force.get_output_port(0),
-                    plant.get_actuation_input_port());
 }
 /* this is really bad drake style. but just know these are passed by reference! */
 std::unique_ptr<systems::Diagram<double>> BubbleGripperCommon::make_diagram(DrakeLcm& lcm, 
         MultibodyPlant<double>*& plant_ptr, double& v0, bool lqr_fixed, const SimFlags& flags) 
 {
     systems::DiagramBuilder<double> builder;
-    BubbleGripperCommon::make_bubbles_mbp_setup(builder, lcm, plant_ptr, v0, lqr_fixed, flags);
+    BubbleGripperCommon::make_bubbles_mbp_setup(builder, lcm, plant_ptr, v0, lqr_fixed, true /*actuation */, flags);
+    return builder.Build();
+}
+
+
+std::unique_ptr<systems::Diagram<double>> BubbleGripperCommon::make_diagram_wextforces(DrakeLcm& lcm, 
+        								MultibodyPlant<double>*& plant_ptr, double& v0, const SimFlags& flags,
+                        const ExtForceFlags& force_flags, bool use_controller,
+                        const PDControllerParams& c_params )
+{
+    systems::DiagramBuilder<double> builder;
+    // set LQR_fixed to true because I don't want the sinusoidal motions
+    BubbleGripperCommon::make_bubbles_mbp_setup(builder, lcm, plant_ptr, v0, true /* lqr_fixed */, !use_controller /* actuation */, flags);
+    auto force_gen = builder.AddSystem<BoxExternalForceGenerator>(plant_ptr, force_flags);
+    // connect the external force generator to the MBP
+    builder.Connect(force_gen->get_output_port(0), plant_ptr->get_applied_spatial_force_input_port());
+    if (use_controller)
+    {
+      double kbz  = c_params.FLAGS_pd_kbz;
+      double kgz  = c_params.FLAGS_pd_kgz;
+      double kgw  = c_params.FLAGS_pd_kgw;
+      double kbzd = c_params.FLAGS_pd_kbz_dot;
+      double kgzd = c_params.FLAGS_pd_kgz_dot;
+      double kgwd = c_params.FLAGS_pd_kgw_dot;
+      /* pid controller requires number of q to be equal to number of v */
+      /* instead, use AffineSystem */
+
+      /* we want y = D (u - u_d) + init_force where u_d = desired_x */
+      /* y = D u + y0, where y0 =- D u_d + init_force*/
+      Eigen::MatrixXd D(2, 17);
+      
+      /*   box orient, box translate, grip z, grip width, box angvel, box vel, grip zvel, grip wvel*/
+      D << 0,0,0,0,    0, 0, -kbz,    -kgz,   0,          0, 0, 0,    0,0,-kbzd,  -kgzd,     0,
+           0,0,0,0,    0, 0, 0,       0,      -kgw,       0, 0, 0,    0, 0, 0,    0,      -kgwd;
+      Eigen::VectorXd y0(2);
+      y0 << 0, flags.FLAGS_gripper_force;
+      y0 -= D * c_params.desired_x;
+      std::cout << "D:\n" << D << std::endl;
+      std::cout << "y0:\n" << y0 << std::endl;
+      Eigen::MatrixXd A(0,0);
+      Eigen::MatrixXd B(0,17);
+      Eigen::MatrixXd C(2,0);
+      Eigen::VectorXd f0;
+      double time_period = 0.0;
+      if( plant_ptr->is_discrete() )
+      {
+        time_period = plant_ptr->time_step();
+      }
+      auto controller = builder.AddSystem<systems::AffineSystem>(A, B, f0, C, D, y0, time_period);
+      builder.Connect(controller->get_output_port(), plant_ptr->get_actuation_input_port());
+      builder.Connect(plant_ptr->get_state_output_port(), controller->get_input_port());
+    }
+
     return builder.Build();
 }
 
