@@ -266,7 +266,7 @@ void BubbleGripperCommon::make_bubbles_mbp_setup(systems::DiagramBuilder<double>
     const Vector3d axis = translate_joint.translation_axis();
     if (axis.isApprox(Vector3d::UnitZ())) {
       fmt::print("Gripper motions forced in the vertical direction.\n");
-      plant.mutable_gravity_field().set_gravity_vector(Vector3d::Zero());
+      plant.mutable_gravity_field().set_gravity_vector(Vector3d(0.0, -flags.FLAGS_y_gravity, 0.0));
     } else if (axis.isApprox(Vector3d::UnitX())) {
       fmt::print("Gripper motions forced in the horizontal direction.\n");
     } else {
@@ -413,21 +413,23 @@ std::unique_ptr<systems::Diagram<double>> BubbleGripperCommon::make_diagram_wext
     builder.Connect(force_gen->get_output_port(0), plant_ptr->get_applied_spatial_force_input_port());
     if (use_controller)
     {
-      double kbz  = c_params.FLAGS_pd_kbz;
-      double kgz  = c_params.FLAGS_pd_kgz;
-      double kgw  = c_params.FLAGS_pd_kgw;
-      double kbzd = c_params.FLAGS_pd_kbz_dot;
-      double kgzd = c_params.FLAGS_pd_kgz_dot;
-      double kgwd = c_params.FLAGS_pd_kgw_dot;
+      double kbz   = c_params.FLAGS_pd_kbz;
+      double kgz   = c_params.FLAGS_pd_kgz;
+      double kgw   = c_params.FLAGS_pd_kgw;
+      double kbwx  = c_params.FLAGS_pd_kbwx;
+      double kbzd  = c_params.FLAGS_pd_kbz_dot;
+      double kgzd  = c_params.FLAGS_pd_kgz_dot;
+      double kgwd  = c_params.FLAGS_pd_kgw_dot;
+      double kbwxd = c_params.FLAGS_pd_kbwx_dot;
       /* pid controller requires number of q to be equal to number of v */
       /* instead, use AffineSystem */
 
       /* we want y = D (u - u_d) + init_force where u_d = desired_x */
       /* y = D u + y0, where y0 =- D u_d + init_force*/
       Eigen::MatrixXd D(2, 17);
-      
+      /* orientation is qw, qx, qy, qz */
       /*   box orient, box translate, grip z, grip width, box angvel, box vel, grip zvel, grip wvel*/
-      D << 0,0,0,0,    0, 0, -kbz,    -kgz,   0,          0, 0, 0,    0,0,-kbzd,  -kgzd,     0,
+      D << 0,0,-kbwx,0,  0, 0, -kbz,    -kgz,   0,         kbwxd,0,0,  0,0,-kbzd, -kgzd,     0,
            0,0,0,0,    0, 0, 0,       0,      -kgw,       0, 0, 0,    0, 0, 0,    0,      -kgwd;
       Eigen::VectorXd y0(2);
       y0 << 0, flags.FLAGS_gripper_force;

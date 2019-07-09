@@ -102,15 +102,17 @@ DEFINE_double(ry, 0, "The y-rotation of the mug around its origin - the center "
 DEFINE_double(rz, 0, "The z-rotation of the mug around its origin - the center "
               "of its bottom. [degrees]. Extrinsic rotation order: X, Y, Z");
 
-DEFINE_double(fixed_boxy, 0, "The z-coordinate of the box when finding the fixed point"); 
+DEFINE_double(fixed_boxy, 0.2, "The z-coordinate of the box when finding the fixed point"); 
 DEFINE_double(fixed_boxz, 0, "The z-coordinate of the box when finding the fixed point"); 
-DEFINE_double(boxy, 0, "The z-coordinate of the box in simulation"); 
-DEFINE_double(boxz, 0, "The z-coordinate of the box in simulation"); 
+DEFINE_double(boxy, 0.2, "The z-coordinate of the box in simulation"); 
 /* use -0.08 with pads */
 /* use -0.12 otherwise */
+DEFINE_double(boxz, 0, "The z-coordinate of the box in simulation"); 
 
+
+DEFINE_double(y_gravity, 9.8, "Gravitational strength in the -y direction. [m/s^2]"); 
 // Gripping force.
-DEFINE_double(gripper_force, 10, "The force to be applied by the gripper. [N]. "
+DEFINE_double(gripper_force, 17, "The force to be applied by the gripper. [N]. "
               "A value of 0 indicates a fixed grip width as set with option "
               "grip_width.");
 
@@ -140,12 +142,14 @@ DEFINE_double(ext_force_z,  0.5, "External force  z. ");
 
 /* controller */
 DEFINE_bool(use_controller, false, "Whether to add a controller.");
-DEFINE_double(pd_kbz,  100., "Controller k on box z position ");
-DEFINE_double(pd_kgz,  100., "Controller k on gripper z position ");
+DEFINE_double(pd_kbz,  -50., "Controller k on box z position ");
+DEFINE_double(pd_kgz,  0., "Controller k on gripper z position ");
 DEFINE_double(pd_kgw,  100., "Controller k on gripper width ");
-DEFINE_double(pd_kbz_dot,  25.3, "Controller k on box z velocity ");
-DEFINE_double(pd_kgz_dot,  25.3, "Controller k on gripper z velocity ");
+DEFINE_double(pd_kbwx, 150., "Controller k on box x rotation ");
+DEFINE_double(pd_kbz_dot,  -13, "Controller k on box z velocity ");
+DEFINE_double(pd_kgz_dot,  0., "Controller k on gripper z velocity ");
 DEFINE_double(pd_kgw_dot,  11., "Controller k on gripper width velocity ");
+DEFINE_double(pd_kbwx_dot, 0.9, "Controller k on box x rotation ");
 DEFINE_double(pd_k_scale,  1., "Scales all controller position ks.");
 DEFINE_double(pd_kdot_scale,  1., "Scales all controller velocity ks.");
 DEFINE_double(pd_all_scale,  1., "Scales all controller ks.");
@@ -182,6 +186,7 @@ int do_main() {
     flags.FLAGS_accuracy = FLAGS_accuracy;
     flags.FLAGS_target_realtime_rate = FLAGS_init_target_realtime_rate;
     flags.FLAGS_simulation_time = FLAGS_init_simulation_time;
+    flags.FLAGS_y_gravity = 0.0;
 
     DrakeLcm lcm;
     MultibodyPlant<double>* plant_ptr = nullptr;
@@ -213,6 +218,7 @@ int do_main() {
     flags.FLAGS_simulation_time = FLAGS_simulation_time;
     flags.FLAGS_boxy = FLAGS_boxy;
     flags.FLAGS_boxz = FLAGS_boxz;
+    flags.FLAGS_y_gravity = FLAGS_y_gravity;
     ExtForceFlags force_flags;
     force_flags.FLAGS_repeat_force = FLAGS_repeat_force;
     force_flags.FLAGS_ext_force_start_time = FLAGS_ext_force_start_time;
@@ -224,12 +230,14 @@ int do_main() {
     force_flags.FLAGS_ext_force_y = FLAGS_ext_force_y;
     force_flags.FLAGS_ext_force_z = FLAGS_ext_force_z;
     PDControllerParams params;
-    params.FLAGS_pd_kbz = FLAGS_pd_kbz * FLAGS_pd_kdot_scale * FLAGS_pd_all_scale;
-    params.FLAGS_pd_kgz = FLAGS_pd_kgz * FLAGS_pd_kdot_scale * FLAGS_pd_all_scale;
-    params.FLAGS_pd_kgw = FLAGS_pd_kgw * FLAGS_pd_kdot_scale * FLAGS_pd_all_scale;
+    params.FLAGS_pd_kbz = FLAGS_pd_kbz * FLAGS_pd_k_scale * FLAGS_pd_all_scale;
+    params.FLAGS_pd_kgz = FLAGS_pd_kgz * FLAGS_pd_k_scale * FLAGS_pd_all_scale;
+    params.FLAGS_pd_kgw = FLAGS_pd_kgw * FLAGS_pd_k_scale * FLAGS_pd_all_scale;
+    params.FLAGS_pd_kbwx = FLAGS_pd_kbwx * FLAGS_pd_k_scale * FLAGS_pd_all_scale;
     params.FLAGS_pd_kbz_dot = FLAGS_pd_kbz_dot * FLAGS_pd_kdot_scale * FLAGS_pd_all_scale;
     params.FLAGS_pd_kgz_dot = FLAGS_pd_kgz_dot * FLAGS_pd_kdot_scale * FLAGS_pd_all_scale;
     params.FLAGS_pd_kgw_dot = FLAGS_pd_kgw_dot * FLAGS_pd_kdot_scale * FLAGS_pd_all_scale;
+    params.FLAGS_pd_kbwx_dot = FLAGS_pd_kbwx_dot * FLAGS_pd_kdot_scale * FLAGS_pd_all_scale;
     params.desired_x = plant_state;
     DrakeLcm lcm;
     MultibodyPlant<double>* plant_ptr = nullptr;
@@ -254,7 +262,7 @@ int do_main() {
     systems::Simulator<double> simulator(*diagram, std::move(diagram_context));
 
     BubbleGripperCommon::simulate_bubbles(simulator, plant, diagram.get(), flags );
-    //BubbleGripperCommon::print_states(plant, plant_context, flags);
+    BubbleGripperCommon::print_states(plant, plant_context, flags);
 
 
     

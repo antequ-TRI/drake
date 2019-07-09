@@ -30,6 +30,7 @@ namespace bubble_gripper {
 		double FLAGS_accuracy;
 		double FLAGS_target_realtime_rate;
 		double FLAGS_simulation_time;
+		double FLAGS_y_gravity;
 	};
 
 	struct ExtForceFlags
@@ -50,9 +51,11 @@ namespace bubble_gripper {
 		double FLAGS_pd_kbz;
 		double FLAGS_pd_kgz;
 		double FLAGS_pd_kgw;
+		double FLAGS_pd_kbwx;
 		double FLAGS_pd_kbz_dot;
 		double FLAGS_pd_kgz_dot;
 		double FLAGS_pd_kgw_dot;
+		double FLAGS_pd_kbwx_dot;
 		Eigen::VectorXd desired_x{ 17 };
 	};
 
