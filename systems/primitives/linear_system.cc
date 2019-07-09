@@ -93,14 +93,21 @@ std::unique_ptr<AffineSystem<double>> DoFirstOrderTaylorApproximation(
     optional<double> equilibrium_check_tolerance = nullopt) {
   DRAKE_ASSERT_VOID(system.CheckValidContext(context));
 
+  const bool has_continuous_yet_no_discrete_states = 
+    context.num_continuous_states() != 0 && context.num_discrete_state_groups() == 0;
+  const bool has_discrete_yet_no_continuous_states = 
+    context.num_discrete_state_groups() == 1 && context.num_continuous_states() == 0;
+#if 0
   const bool has_only_discrete_states_contained_in_one_group =
       context.has_only_discrete_state() &&
       context.num_discrete_state_groups() == 1;
   DRAKE_DEMAND(context.is_stateless() || context.has_only_continuous_state() ||
                has_only_discrete_states_contained_in_one_group);
-
+#endif
+  // check to make sure we don't both have continuous and discrete
+  DRAKE_DEMAND( context.num_continuous_states() == 0 || context.num_discrete_state_groups() != 1);
   double time_period = 0.0;
-  if (has_only_discrete_states_contained_in_one_group) {
+  if (has_discrete_yet_no_continuous_states) {
     optional<PeriodicEventData> periodic_data =
         system.GetUniquePeriodicDiscreteUpdateAttribute();
     DRAKE_THROW_UNLESS(static_cast<bool>(periodic_data));
@@ -136,7 +143,7 @@ std::unique_ptr<AffineSystem<double>> DoFirstOrderTaylorApproximation(
   const Eigen::VectorXd x0 =
       context.is_stateless()
           ? Eigen::VectorXd::Zero(0)
-          : ((context.has_only_continuous_state())
+          : ((has_continuous_yet_no_discrete_states)
                  ? context.get_continuous_state_vector().CopyToVector()
                  : context.get_discrete_state(0).get_value());
   const int num_states = x0.size();
@@ -157,7 +164,9 @@ std::unique_ptr<AffineSystem<double>> DoFirstOrderTaylorApproximation(
   Eigen::MatrixXd A(num_states, num_states), B(num_states, num_inputs);
   Eigen::VectorXd f0(num_states);
   if (num_states > 0) {
-    if (autodiff_context->has_only_continuous_state()) {
+    const bool autodiff_has_continuous_yet_no_discrete_states = 
+    autodiff_context->num_continuous_states() != 0 && autodiff_context->num_discrete_state_groups() == 0;
+    if (autodiff_has_continuous_yet_no_discrete_states) {
       autodiff_context->get_mutable_continuous_state_vector().SetFromVector(
           std::get<0>(autodiff_args));
       std::unique_ptr<ContinuousState<AutoDiffXd>> autodiff_xdot =
@@ -185,7 +194,7 @@ std::unique_ptr<AffineSystem<double>> DoFirstOrderTaylorApproximation(
 
       f0 = xdot0 - A * x0 - B * u0;
     } else {
-      DRAKE_ASSERT(has_only_discrete_states_contained_in_one_group);
+      DRAKE_ASSERT(has_discrete_yet_no_continuous_states);
       auto& autodiff_x0 =
           autodiff_context->get_mutable_discrete_state().get_mutable_vector();
       autodiff_x0.SetFromVector(std::get<0>(autodiff_args));

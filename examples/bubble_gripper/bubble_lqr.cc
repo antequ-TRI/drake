@@ -469,7 +469,7 @@ int do_main() {
     double v0;
     auto diagram = BubbleGripperCommon::make_diagram(lcm, plant_ptr, v0, true /* lqr fixed point */, flags);
     MultibodyPlant<double>& plant = *plant_ptr;
-    DRAKE_DEMAND(plant.is_discrete());
+    //DRAKE_DEMAND(plant.is_discrete());
     // Create a context for this system:
     std::unique_ptr<systems::Context<double>> diagram_context =
         diagram->CreateDefaultContext();
@@ -529,6 +529,7 @@ int do_main() {
   systems::DiagramBuilder<double> builder;
   DrakeLcm lcm;
   MultibodyPlant<double>* plant_ptr = nullptr;
+  SceneGraph<double>* scene_graph_ptr = nullptr;
   double v0;
   flags.FLAGS_boxy = FLAGS_boxy;
   flags.FLAGS_boxz = FLAGS_boxz;
@@ -545,12 +546,13 @@ int do_main() {
         AddGripperPads(plant_ptr, 0.0, 0.0, *(static_cast<multibody::Body<double>*>(nullptr)),vert, true, false, flags);
         AddCollisionGeom(plant_ptr, 0.0, *(static_cast<multibody::Body<double>*>(nullptr)) ,flags);
       }
-      SceneGraph<double>& scene_graph = *builder.AddSystem<SceneGraph>();
+      scene_graph_ptr = builder.AddSystem<SceneGraph>();
+      SceneGraph<double>& scene_graph = *scene_graph_ptr;
       scene_graph.set_name("scene_graph");
 
       // Load and parse double pendulum SDF from file into a tree.
       DRAKE_DEMAND(flags.FLAGS_max_time_step > 0);
-      DRAKE_DEMAND(flags.FLAGS_time_stepping);
+     // DRAKE_DEMAND(flags.FLAGS_time_stepping);
       plant_ptr = flags.FLAGS_time_stepping ?
           builder.AddSystem<MultibodyPlant>(flags.FLAGS_max_time_step) :
           builder.AddSystem<MultibodyPlant>();
@@ -645,16 +647,29 @@ int do_main() {
           scene_graph.get_source_pose_port(plant.get_source_id().value()));
       builder.Connect(scene_graph.get_query_output_port(), 
           plant.get_geometry_query_input_port());
-      geometry::ConnectDrakeVisualizer(&builder, scene_graph);
 
       builder.ExportInput(plant.get_actuation_input_port());
       builder.ExportOutput(plant.get_state_output_port());
+      // these are autodiffable
+      //plant.ToAutoDiffXd();
+      //scene_graph.ToAutoDiffXd();
+      // for geometry visualization
+      builder.ExportOutput(scene_graph.get_pose_bundle_output_port());
 
 
   }
   
   systems::DiagramBuilder<double> finalBuilder;
   auto subdiagram = finalBuilder.AddSystem<systems::Diagram<double>>(builder.Build());
+  subdiagram->set_name("sub diagram");
+  systems::Diagram<AutoDiffXd> z(*subdiagram);
+  subdiagram->ToAutoDiffXd();
+
+
+  geometry::ConnectDrakeVisualizer(&finalBuilder, *scene_graph_ptr, subdiagram->get_output_port(1), &lcm);
+  
+
+
 
       int plant_actuation_port = plant_ptr->get_actuation_input_port().get_index();
  // Create and initialize the  context for this system
@@ -674,15 +689,16 @@ int do_main() {
       }
       else
       {
-        throw new std::runtime_error("continuous LQR not supported yet!");
+        plant_context.SetContinuousState(plant_state);
+        //throw new std::runtime_error("continuous LQR not supported yet!");
       }
        
       std::cout << "Constructing LQR ..." << std::endl;
       auto lqr = finalBuilder.AddSystem(systems::controllers::LinearQuadraticRegulator(
           *subdiagram, *subdiagram_context, Q, R));
       std::cout << "LQR constructed!" << std::endl;
-      finalBuilder.Connect(plant.get_state_output_port(), lqr->get_input_port());
-      finalBuilder.Connect(lqr->get_output_port(), plant.get_actuation_input_port());
+      finalBuilder.Connect(subdiagram->get_output_port(0), lqr->get_input_port());
+      finalBuilder.Connect(lqr->get_output_port(), subdiagram->get_input_port(0));
 
   auto diagram = finalBuilder.Build();
   std::unique_ptr<systems::Context<double>> diagram_context = diagram->CreateDefaultContext();
