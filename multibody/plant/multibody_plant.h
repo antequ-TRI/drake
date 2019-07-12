@@ -240,6 +240,7 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
     default_dissipation_ = other.default_dissipation_;
     visual_geometries_ = other.visual_geometries_;
     collision_geometries_ = other.collision_geometries_;
+    use_hydroelastic_model_ = other.use_hydroelastic_model_;
     if (geometry_source_is_registered())
       DeclareSceneGraphPorts();
 
