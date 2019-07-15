@@ -246,6 +246,15 @@ std::unique_ptr<AffineSystem<double>> DoFirstOrderTaylorApproximation(
     y0 = y - C * x0 - D * u0;
   }
 
+      std::cout << "Linearized x0: \n" << x0 << std::endl;
+      std::cout << "Linearized u0: \n" << u0 << std::endl;
+      std::cout << "Linearized y0: \n" << y0 << std::endl;      
+      std::cout << "Linearized A x + B u, A: \n" << A << std::endl;
+      std::cout << "Linearized A x + B u, B: \n" << B << std::endl;
+      std::cout << "Linearized C x + D u, C: \n" << C << std::endl;
+      std::cout << "Linearized C x + D u, D: \n" << D << std::endl;
+
+
   return std::make_unique<AffineSystem<double>>(A, B, f0, C, D, y0,
                                                 time_period);
 }

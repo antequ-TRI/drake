@@ -116,14 +116,14 @@ DEFINE_double(dissipation, 5.0, "Desired Accuracy. ");
 
 // default assumes that timescale is 0.5 s and box char length is 1-2 cm
 // must square costs. 
-DEFINE_double(state_box_rot_cost, 0.0004,"LQR cost for box rotation." );
-DEFINE_double(state_box_transl_cost, 1.0,"LQR cost for box translation." );
+DEFINE_double(state_box_rot_cost, 0.0 ,"LQR cost for box rotation." ); /* 0.0004, only works with 0 because matrix component is 0 */
+DEFINE_double(state_box_transl_cost, 1.0,"LQR cost for box translation." ); /* 1.0, only works with 0 because matrix component is 0 */
 
 DEFINE_double(state_grip_width_cost, 1.0, "LQR cost for gripper width." );
 DEFINE_double(state_z_transl_cost, 1.0, "LQR cost for z translation." );
 
-DEFINE_double(state_box_angvel_cost, 0.0016, "LQR cost for box ang velocity." );
-DEFINE_double(state_box_vel_cost, 4.0, "LQR cost for box translational velocity." );
+DEFINE_double(state_box_angvel_cost, 0., "LQR cost for box ang velocity." ); /* 0.0016, only works with 0 because matrix component is 0 */
+DEFINE_double(state_box_vel_cost, 0.0, "LQR cost for box translational velocity." ); /* 4.0, only works with 0 because matrix component is 0 */
 DEFINE_double(state_x_vel_cost, 4.0, "LQR cost for gripper width velocity." );
 DEFINE_double(state_z_vel_cost, 4.0, "LQR cost for z velocity." );
 
