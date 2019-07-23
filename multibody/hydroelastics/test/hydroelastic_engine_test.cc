@@ -173,7 +173,7 @@ TEST_F(SphereVsPlaneTest, VerifyModelSizeAndResults) {
     const double radius = p_SV.norm();  // since z component is zero.
     EXPECT_LE(radius, surface_radius);
 
-    // We expect ∇hₘₙ to point from N towards M. 
+    // We expect ∇hₘₙ to point from N towards M.
     const Vector3<double> grad_h_mn_M = surface.EvaluateGrad_h_MN_M(v);
     EXPECT_TRUE(CompareMatrices(grad_h_mn_M, expected_grad_h_mn_M, kTolerance));
   }

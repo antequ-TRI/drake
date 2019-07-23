@@ -2,6 +2,7 @@
 
 #include <limits>
 #include <memory>
+#include <string>
 #include <utility>
 
 #include "drake/common/default_scalars.h"
