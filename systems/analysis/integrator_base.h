@@ -250,7 +250,9 @@ class IntegratorBase {
   // TODO(edrumwri): complain if integrator with error estimation wants to drop
   //                 below the minimum step size
   void set_target_accuracy(double accuracy) {
-    if (!supports_error_estimation())
+    // note by antequ: We STILL NEED THIS FEATURE when integrator is
+    //             fixed and implicit, to set the newton-raphson tolerance
+    if (false && !supports_error_estimation())
       throw std::logic_error(
           "Integrator does not support accuracy estimation "
           "and user has requested error control");

@@ -388,7 +388,8 @@ bool ImplicitEulerIntegrator<T>::AttemptStepPaired(const T& t0, const T& h,
 
   // Attempt to compute the implicit trapezoid solution.
   *xtplus_itr = *xtplus_ie;
-  if (StepImplicitTrapezoid(t0, h, xt0, dx0, xtplus_itr)) {
+  // note by antequ: implicit trapezoid should not run in fixed mode
+  if (this->get_fixed_step_mode() || StepImplicitTrapezoid(t0, h, xt0, dx0, xtplus_itr)) {
     // Reset the state to that computed by implicit Euler.
     // TODO(edrumwri): Explore using the implicit trapezoid method solution
     //                 instead as *the* solution, rather than the implicit
