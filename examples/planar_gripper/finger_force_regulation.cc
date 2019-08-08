@@ -17,6 +17,7 @@
 #include "drake/systems/primitives/constant_vector_source.h"
 #include "drake/systems/primitives/zero_order_hold.h"
 #include "drake/lcm/drake_lcm.h"
+#include "drake/systems/analysis/implicit_euler_integrator.h"
 
 namespace drake {
 namespace examples {
@@ -25,6 +26,7 @@ namespace {
 
 using geometry::SceneGraph;
 
+using systems::ImplicitEulerIntegrator;
 using drake::multibody::MultibodyPlant;
 using drake::multibody::Parser;
 using drake::multibody::RevoluteJoint;
@@ -58,7 +60,10 @@ DEFINE_double(penetration_allowance, 0.005, "Penetration allowance.");
 DEFINE_double(stiction_tolerance, 1e-3, "MBP v_stiction_tolerance");
 DEFINE_double(fz, -10, "Desired end effector force");
 DEFINE_double(Kd, 0.3, "joint damping Kd");
-DEFINE_double(kpy, 800, "kpy");
+DEFINE_double(kpy, 800, "kpy"); /* 220 or below is stable for ts=1e-4, 100 for ts=1e-3 */
+
+DEFINE_bool(fixed_step, false, "integrator use fixed step mode");
+DEFINE_double(cont_time_step, 1e-4, "timestep size in continuous mode");
 
 template<typename T>
 void WeldFingerFrame(multibody::MultibodyPlant<T> *plant) {
@@ -283,7 +288,8 @@ int do_main() {
   geometry::ConnectDrakeVisualizer(&builder, scene_graph, &lcm);
 
   // Publish contact results for visualization.
-  ConnectContactResultsToDrakeVisualizer(&builder, plant, &lcm);
+  if (plant.is_discrete())
+    ConnectContactResultsToDrakeVisualizer(&builder, plant, &lcm);
 
   auto diagram = builder.Build();
 
@@ -323,9 +329,16 @@ int do_main() {
         plant.GetJointByName<RevoluteJoint>("box_pin_joint");
     box_pin.set_angle(&plant_context, 0);
   }
-
   systems::Simulator<double> simulator(*diagram, std::move(diagram_context));
 
+    systems::IntegratorBase<double>* integrator{nullptr};
+    integrator =
+        simulator.reset_integrator<ImplicitEulerIntegrator<double>>(
+            *diagram, &simulator.get_mutable_context());
+    integrator->set_target_accuracy(3e-4); /* seems to work well */
+  integrator->set_maximum_step_size( FLAGS_cont_time_step );
+  if (integrator->supports_error_estimation())
+    integrator->set_fixed_step_mode( FLAGS_fixed_step );
   simulator.set_publish_every_time_step(false);
   simulator.set_target_realtime_rate(FLAGS_target_realtime_rate);
   simulator.Initialize();
