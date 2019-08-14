@@ -137,9 +137,12 @@ bool ImplicitEulerIntegrator<T>::StepAbstract(const T& t0, const T& h,
 
   // Verify xtplus
   DRAKE_ASSERT(xtplus && xtplus->size() == xt0.size());
-
+  
   SPDLOG_DEBUG(drake::log(), "StepAbstract() entered for t={}, h={}, trial={}",
       t0, h, trial);
+
+  // set xtplus to xt0 in the beginning, in case it diverged in the last trial
+  *xtplus = xt0;
 
   // Advance the context time and state to compute derivatives at t0 + h.
   const T tf = t0 + h;
@@ -156,7 +159,7 @@ bool ImplicitEulerIntegrator<T>::StepAbstract(const T& t0, const T& h,
 
   // Calculate Jacobian and iteration matrices (and factorizations), as needed,
   // around (tf, xtplus).
-  if (!this->MaybeFreshenMatrices(tf, *xtplus, h, trial,
+  if (!this->MaybeFreshenMatrices(tf, xt0, h, trial,
       compute_and_factor_iteration_matrix, &iteration_matrix_)) {
     return false;
   }
