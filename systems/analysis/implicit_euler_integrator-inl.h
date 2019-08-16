@@ -159,7 +159,7 @@ bool ImplicitEulerIntegrator<T>::StepAbstract(const T& t0, const T& h,
 
   // Calculate Jacobian and iteration matrices (and factorizations), as needed,
   // around (tf, xtplus).
-  if (!this->MaybeFreshenMatrices(tf, xt0, h, trial,
+  if (!this->MaybeFreshenMatrices(t0, xt0, h, trial,
       compute_and_factor_iteration_matrix, &iteration_matrix_)) {
     return false;
   }
